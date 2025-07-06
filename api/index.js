@@ -1,20 +1,20 @@
-import express from 'express';
-import cors from 'cors';
-import dotenv from 'dotenv';
+const express = require('express');
+const cors = require('cors');
+const dotenv = require('dotenv');
 
 // Import database initialization
-import { initializeDatabase } from './database.js';
+const { initializeDatabase } = require('./database.js');
 
 // Import routes
-import authRoutes from './routes/auth.js';
-import userRoutes from './routes/users.js';
-import roleRoutes from './routes/roles.js';
-import branchRoutes from './routes/branches.js';
-import invoiceRoutes from './routes/invoices.js';
-import marketRoutes from './routes/market.js';
-import hrRoutes from './routes/hr.js';
-import notificationRoutes from './routes/notifications.js';
-import dashboardRoutes from './routes/dashboard.js';
+const authRoutes = require('./routes/auth.js');
+const userRoutes = require('./routes/users.js');
+const roleRoutes = require('./routes/roles.js');
+const branchRoutes = require('./routes/branches.js');
+const invoiceRoutes = require('./routes/invoices.js');
+const marketRoutes = require('./routes/market.js');
+const hrRoutes = require('./routes/hr.js');
+const notificationRoutes = require('./routes/notifications.js');
+const dashboardRoutes = require('./routes/dashboard.js');
 
 // Load environment variables
 dotenv.config();
@@ -77,10 +77,10 @@ app.use('*', (req, res) => {
 });
 
 // Vercel serverless function handler
-export default async function handler(req, res) {
+module.exports = async function handler(req, res) {
   // Initialize database on first request
   await initDB();
   
   // Handle the request using Express app
   return app(req, res);
-} 
+}; 

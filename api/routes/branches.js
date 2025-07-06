@@ -1,6 +1,6 @@
-import express from 'express';
-import { v4 as uuidv4 } from 'uuid';
-import { runQuery, getQuery, allQuery } from '../database.js';
+const express = require('express');
+const { v4: uuidv4 } = require('uuid');
+const { runQuery, getQuery, allQuery } = require('../database.js');
 
 const router = express.Router();
 
@@ -275,4 +275,4 @@ router.get('/module/:moduleType', async (req, res) => {
   }
 });
 
-export default router; 
+module.exports = router; 

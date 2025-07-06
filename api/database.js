@@ -1,11 +1,7 @@
-import sqlite3 from 'sqlite3';
-import path from 'path';
-import { fileURLToPath } from 'url';
-import bcrypt from 'bcryptjs';
-import { v4 as uuidv4 } from 'uuid';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+const sqlite3 = require('sqlite3');
+const path = require('path');
+const bcrypt = require('bcryptjs');
+const { v4: uuidv4 } = require('uuid');
 
 // For Vercel, use /tmp directory which is writable
 const isVercel = process.env.VERCEL === '1' || process.env.NODE_ENV === 'production';
@@ -30,7 +26,7 @@ const connectDB = () => {
 };
 
 // Promisify database operations
-export const runQuery = (query, params = []) => {
+const runQuery = (query, params = []) => {
   return new Promise((resolve, reject) => {
     const database = connectDB();
     database.run(query, params, function(err) {
@@ -40,7 +36,7 @@ export const runQuery = (query, params = []) => {
   });
 };
 
-export const getQuery = (query, params = []) => {
+const getQuery = (query, params = []) => {
   return new Promise((resolve, reject) => {
     const database = connectDB();
     database.get(query, params, (err, row) => {
@@ -50,7 +46,7 @@ export const getQuery = (query, params = []) => {
   });
 };
 
-export const allQuery = (query, params = []) => {
+const allQuery = (query, params = []) => {
   return new Promise((resolve, reject) => {
     const database = connectDB();
     database.all(query, params, (err, rows) => {
@@ -390,7 +386,7 @@ const insertDefaultData = async () => {
 };
 
 // Initialize database
-export const initializeDatabase = async () => {
+const initializeDatabase = async () => {
   try {
     console.log('🔄 Initializing database for Vercel...');
     
@@ -402,4 +398,11 @@ export const initializeDatabase = async () => {
     console.error('❌ Error initializing database:', error);
     throw error;
   }
+};
+
+module.exports = {
+  runQuery,
+  getQuery,
+  allQuery,
+  initializeDatabase
 }; 
