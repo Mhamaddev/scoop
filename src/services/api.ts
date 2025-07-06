@@ -2,33 +2,51 @@
 const getApiBaseUrl = () => {
   // Check for explicit environment variable first
   if (import.meta.env.VITE_API_BASE_URL) {
+    console.log('Using VITE_API_BASE_URL:', import.meta.env.VITE_API_BASE_URL);
     return import.meta.env.VITE_API_BASE_URL;
   }
   
-  // Check if we're in development (localhost)
-  const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+  // Get current location details
+  const hostname = window.location.hostname;
+  const protocol = window.location.protocol;
+  const isDev = import.meta.env.DEV;
+  const isProd = import.meta.env.PROD;
   
-  // Check if we're on Vercel (contains vercel.app in hostname)
-  const isVercel = window.location.hostname.includes('vercel.app') || window.location.hostname.includes('.vercel.app');
+  // More robust localhost detection
+  const isLocalhost = hostname === 'localhost' || 
+                     hostname === '127.0.0.1' || 
+                     hostname === '0.0.0.0' ||
+                     hostname.startsWith('192.168.') ||
+                     hostname.startsWith('10.') ||
+                     hostname.startsWith('172.');
   
-  // For local development
-  if (isLocalhost) {
+  // Check if we're definitely in development mode
+  const isDefinitelyDevelopment = isDev || isLocalhost;
+  
+  // For development environments
+  if (isDefinitelyDevelopment) {
+    console.log('Detected development environment, using localhost:5000');
     return 'http://localhost:5000/api';
   }
   
-  // For production (Vercel or any other deployment)
+  // For production environments (Vercel, Netlify, etc.)
+  console.log('Detected production environment, using relative /api');
   return '/api';
 };
 
 const API_BASE_URL = getApiBaseUrl();
 
-// Debug logging for production troubleshooting
-console.log('API Configuration:', {
+// Enhanced debug logging for production troubleshooting
+console.log('🔧 API Configuration Debug:', {
   hostname: window.location.hostname,
+  protocol: window.location.protocol,
+  href: window.location.href,
   env_var: import.meta.env.VITE_API_BASE_URL,
   calculated_url: API_BASE_URL,
   is_development: import.meta.env.DEV,
-  is_production: import.meta.env.PROD
+  is_production: import.meta.env.PROD,
+  mode: import.meta.env.MODE,
+  timestamp: new Date().toISOString()
 });
 
 class ApiService {
@@ -40,7 +58,21 @@ class ApiService {
   }
 
   private async request(endpoint: string, options: RequestInit = {}) {
-    const url = `${API_BASE_URL}${endpoint}`;
+    // Runtime safeguard: ensure we're using the correct base URL
+    let baseUrl = API_BASE_URL;
+    
+    // Force production API URL if we're definitely not in development
+    const isDefinitelyProduction = !import.meta.env.DEV && 
+                                  window.location.hostname !== 'localhost' && 
+                                  window.location.hostname !== '127.0.0.1';
+    
+    if (isDefinitelyProduction && baseUrl.includes('localhost')) {
+      console.warn('🚨 Forcing production API URL - detected localhost in production!');
+      baseUrl = '/api';
+    }
+    
+    const url = `${baseUrl}${endpoint}`;
+    console.log(`🌐 API Request: ${url}`);
     
     const config: RequestInit = {
       headers: {
@@ -62,6 +94,8 @@ class ApiService {
       return await response.json();
     } catch (error) {
       console.error(`API Error [${endpoint}]:`, error);
+      console.error('Request URL:', url);
+      console.error('Request config:', config);
       throw error;
     }
   }
