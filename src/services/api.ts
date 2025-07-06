@@ -1,8 +1,35 @@
 // API Service for AccountingPro Backend
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 
-  (window.location.hostname === 'localhost' 
-    ? 'http://localhost:5000/api' 
-    : '/api');
+const getApiBaseUrl = () => {
+  // Check for explicit environment variable first
+  if (import.meta.env.VITE_API_BASE_URL) {
+    return import.meta.env.VITE_API_BASE_URL;
+  }
+  
+  // Check if we're in development (localhost)
+  const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+  
+  // Check if we're on Vercel (contains vercel.app in hostname)
+  const isVercel = window.location.hostname.includes('vercel.app') || window.location.hostname.includes('.vercel.app');
+  
+  // For local development
+  if (isLocalhost) {
+    return 'http://localhost:5000/api';
+  }
+  
+  // For production (Vercel or any other deployment)
+  return '/api';
+};
+
+const API_BASE_URL = getApiBaseUrl();
+
+// Debug logging for production troubleshooting
+console.log('API Configuration:', {
+  hostname: window.location.hostname,
+  env_var: import.meta.env.VITE_API_BASE_URL,
+  calculated_url: API_BASE_URL,
+  is_development: import.meta.env.DEV,
+  is_production: import.meta.env.PROD
+});
 
 class ApiService {
   private token: string | null = null;
