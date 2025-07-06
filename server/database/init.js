@@ -247,6 +247,19 @@ const createTables = async () => {
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )`,
 
+    // Salary payments table  
+    `CREATE TABLE IF NOT EXISTS salary_payments (
+      id TEXT PRIMARY KEY,
+      employee_id TEXT NOT NULL,
+      amount DECIMAL(10,2) NOT NULL,
+      payment_date DATE NOT NULL,
+      notes TEXT,
+      created_by TEXT NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE,
+      FOREIGN KEY (created_by) REFERENCES users(id)
+    )`,
+
     // Notifications table
     `CREATE TABLE IF NOT EXISTS notifications (
       id TEXT PRIMARY KEY,

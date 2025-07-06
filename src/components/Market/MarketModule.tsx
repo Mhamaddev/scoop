@@ -490,19 +490,19 @@ const MarketModule: React.FC = () => {
         title: 'Expense Entry Added',
         message: `Expense entry "${newExpense.name}" for ${newExpense.amount} has been added.`,
         priority: 'low'
-      });
-      
-      if (keepFormOpen) {
+    });
+    
+    if (keepFormOpen) {
         setNewExpense({
           branchId: newExpense.branchId,
           name: '',
-          amount: '',
-          date: new Date().toISOString().split('T')[0],
+        amount: '',
+        date: new Date().toISOString().split('T')[0],
           notes: ''
-        });
+      });
         setTimeout(() => addExpenseNameRef.current?.focus(), 100);
-      } else {
-        setShowAddModal(false);
+    } else {
+      setShowAddModal(false);
       }
     } catch (error) {
       addNotification({

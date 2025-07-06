@@ -247,11 +247,21 @@ class ApiService {
     });
   }
 
-  async payEmployeeSalary(id: string, paymentData: any) {
+  async payEmployeeSalary(id: string, amount: number, paymentDate: string, notes?: string) {
     return await this.request(`/hr/employees/${id}/pay-salary`, {
       method: 'POST',
-      body: JSON.stringify(paymentData),
+      body: JSON.stringify({ 
+        amount, 
+        date: paymentDate, 
+        notes: notes || '',
+        createdBy: 'current-user' 
+      }),
     });
+  }
+
+  async getEmployeeSalaryPayments(id: string, params?: any) {
+    const query = params ? `?${new URLSearchParams(params).toString()}` : '';
+    return await this.request(`/hr/employees/${id}/salary-payments${query}`);
   }
 
   async getAdjustments(params?: any) {

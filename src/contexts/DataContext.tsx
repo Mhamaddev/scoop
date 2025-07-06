@@ -39,7 +39,7 @@ interface DataContextType {
   addEmployee: (employee: Omit<Employee, 'id'>) => Promise<void>;
   updateEmployee: (employeeId: string, updates: Partial<Employee>) => Promise<void>;
   deleteEmployee: (employeeId: string) => Promise<void>;
-  payEmployeeSalary: (employeeId: string, amount: number, date: string) => Promise<void>;
+  payEmployeeSalary: (employeeId: string, amount: number, date: string, notes?: string) => Promise<void>;
   
   // Adjustments
   adjustments: Adjustment[];
@@ -339,9 +339,9 @@ export const DataProvider: React.FC<DataProviderProps> = ({ children }) => {
     }
   };
 
-  const payEmployeeSalary = async (employeeId: string, amount: number, date: string) => {
+  const payEmployeeSalary = async (employeeId: string, amount: number, date: string, notes?: string) => {
     try {
-      await apiService.payEmployeeSalary(employeeId, { amount, date });
+      await apiService.payEmployeeSalary(employeeId, amount, date, notes);
       await refreshData();
     } catch (error) {
       console.error('Error paying employee salary:', error);

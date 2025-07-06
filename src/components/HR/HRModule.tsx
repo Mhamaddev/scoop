@@ -461,7 +461,8 @@ const HRModule: React.FC = () => {
       await payEmployeeSalary(
         selectedEmployee.id,
         parseFloat(paymentData.paidAmount),
-        paymentData.paymentDate
+        paymentData.paymentDate,
+        paymentData.notes
       );
 
       // Add notification for salary payment

@@ -235,7 +235,7 @@ router.delete('/employees/:id', async (req, res) => {
 router.post('/employees/:id/pay-salary', async (req, res) => {
   try {
     const { id } = req.params;
-    const { amount, date, notes } = req.body;
+    const { amount, date, notes = '', createdBy = 'current-user' } = req.body;
 
     if (!amount || !date) {
       return res.status(400).json({ error: 'Amount and date are required' });
@@ -246,6 +246,14 @@ router.post('/employees/:id/pay-salary', async (req, res) => {
       return res.status(404).json({ error: 'Employee not found' });
     }
 
+    // Create salary payment record
+    const paymentId = uuidv4();
+    await runQuery(`
+      INSERT INTO salary_payments (id, employee_id, amount, payment_date, notes, created_by)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `, [paymentId, id, amount, date, notes, createdBy]);
+
+    // Update employee last payment info
     await runQuery(`
       UPDATE employees SET 
         last_paid_date = ?,
@@ -265,6 +273,38 @@ router.post('/employees/:id/pay-salary', async (req, res) => {
   } catch (error) {
     console.error('Error paying employee salary:', error);
     res.status(500).json({ error: 'Failed to pay employee salary' });
+  }
+});
+
+// Get employee salary payment history
+router.get('/employees/:id/salary-payments', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { limit = 50, offset = 0 } = req.query;
+
+    const employee = await getQuery('SELECT * FROM employees WHERE id = ?', [id]);
+    if (!employee) {
+      return res.status(404).json({ error: 'Employee not found' });
+    }
+
+    const payments = await allQuery(`
+      SELECT sp.*, u.name as created_by_name
+      FROM salary_payments sp
+      JOIN users u ON sp.created_by = u.id
+      WHERE sp.employee_id = ?
+      ORDER BY sp.payment_date DESC, sp.created_at DESC
+      LIMIT ? OFFSET ?
+    `, [id, parseInt(limit), parseInt(offset)]);
+
+    res.json({
+      payments,
+      employee_name: employee.name,
+      limit: parseInt(limit),
+      offset: parseInt(offset)
+    });
+  } catch (error) {
+    console.error('Error fetching salary payments:', error);
+    res.status(500).json({ error: 'Failed to fetch salary payments' });
   }
 });
 
