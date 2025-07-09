@@ -1,8 +1,22 @@
 {
   "rewrites": [
-    {
-      "source": "/api/(.*)",
-      "destination": "/api/$1"
-    }
+    { "source": "/api/auth", "destination": "/api/auth" },
+    { "source": "/api/auth/(.*)", "destination": "/api/auth" },
+    { "source": "/api/branches", "destination": "/api/branches" },
+    { "source": "/api/branches/(.*)", "destination": "/api/branches" },
+    { "source": "/api/dashboard", "destination": "/api/dashboard" },
+    { "source": "/api/dashboard/(.*)", "destination": "/api/dashboard" },
+    { "source": "/api/users", "destination": "/api/users" },
+    { "source": "/api/users/(.*)", "destination": "/api/users" },
+    { "source": "/api/roles", "destination": "/api/roles" },
+    { "source": "/api/roles/(.*)", "destination": "/api/roles" },
+    { "source": "/api/invoices", "destination": "/api/invoices" },
+    { "source": "/api/invoices/(.*)", "destination": "/api/invoices" },
+    { "source": "/api/market", "destination": "/api/market" },
+    { "source": "/api/market/(.*)", "destination": "/api/market" },
+    { "source": "/api/hr", "destination": "/api/hr" },
+    { "source": "/api/hr/(.*)", "destination": "/api/hr" },
+    { "source": "/api/notifications", "destination": "/api/notifications" },
+    { "source": "/api/notifications/(.*)", "destination": "/api/notifications" }
   ]
 } 
