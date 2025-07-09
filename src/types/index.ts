@@ -69,6 +69,9 @@ export interface Invoice {
   name: string;
   amount: number;
   currency: 'USD' | 'IQD';
+  convertedAmount?: number; // Amount in IQD (for USD entries, this is the converted amount)
+  exchangeRate?: number; // Exchange rate used for conversion (USD entries only)
+  rateDate?: string; // Date of exchange rate used
   invoiceDate: string;
   entryDate: string;
   notes?: string;
@@ -76,6 +79,12 @@ export interface Invoice {
   paidAt?: string;
   paidDate?: string;
   createdBy: string;
+}
+
+export interface CurrencyTotal {
+  total_iqd: number;
+  total_usd: number;
+  total: number; // This is the IQD total (same as total_iqd)
 }
 
 export interface DollarRate {
@@ -91,6 +100,10 @@ export interface SalesEntry {
   branchId: string;
   name: string;
   amount: number;
+  currency: 'USD' | 'IQD';
+  convertedAmount: number; // Amount in IQD (for USD entries, this is the converted amount)
+  exchangeRate?: number; // Exchange rate used for conversion (USD entries only)
+  rateDate?: string; // Date of exchange rate used
   date: string;
   notes?: string;
   createdBy: string;
@@ -101,6 +114,10 @@ export interface ProfitEntry {
   branchId: string;
   name: string;
   amount: number;
+  currency: 'USD' | 'IQD';
+  convertedAmount: number; // Amount in IQD (for USD entries, this is the converted amount)
+  exchangeRate?: number; // Exchange rate used for conversion (USD entries only)
+  rateDate?: string; // Date of exchange rate used
   date: string;
   notes?: string;
   createdBy: string;
@@ -111,6 +128,10 @@ export interface ExpenseEntry {
   branchId: string;
   name: string;
   amount: number;
+  currency: 'USD' | 'IQD';
+  convertedAmount: number; // Amount in IQD (for USD entries, this is the converted amount)
+  exchangeRate?: number; // Exchange rate used for conversion (USD entries only)
+  rateDate?: string; // Date of exchange rate used
   date: string;
   notes?: string;
   paymentStatus: 'paid' | 'unpaid';
@@ -129,6 +150,20 @@ export interface SalaryPayment {
   createdBy: string;
 }
 
+export interface SalaryWithdrawal {
+  id: string;
+  employeeId: string;
+  amount: number;
+  currency: 'USD' | 'IQD';
+  convertedAmount: number; // Amount in IQD (for USD entries, this is the converted amount)
+  exchangeRate?: number; // Exchange rate used for conversion (USD entries only)
+  rateDate?: string; // Date of exchange rate used
+  withdrawalDate: string;
+  notes?: string;
+  createdAt: string;
+  createdBy: string;
+}
+
 export interface Employee {
   id: string;
   branchId: string;
@@ -136,7 +171,16 @@ export interface Employee {
   phone?: string;
   location?: string;
   salary: number;
+  salaryCurrency: 'USD' | 'IQD';
+  convertedSalary: number; // Salary in IQD (for USD salaries, this is the converted amount)
+  salaryExchangeRate?: number; // Exchange rate used for salary conversion
+  salaryRateDate?: string; // Date of exchange rate used for salary
   salaryDays: number;
+  deposit: number;
+  depositCurrency: 'USD' | 'IQD';
+  convertedDeposit: number; // Deposit in IQD (for USD deposits, this is the converted amount)
+  depositExchangeRate?: number; // Exchange rate used for deposit conversion
+  depositRateDate?: string; // Date of exchange rate used for deposit
   startDate: string;
   isActive: boolean;
   lastPaidDate?: string;
@@ -144,6 +188,7 @@ export interface Employee {
   paidAmount?: number;
   createdBy: string;
   salaryPayments?: SalaryPayment[];
+  salaryWithdrawals?: SalaryWithdrawal[];
 }
 
 export interface Adjustment {
@@ -151,6 +196,10 @@ export interface Adjustment {
   employeeId: string;
   type: 'penalty' | 'bonus';
   amount: number;
+  currency: 'USD' | 'IQD';
+  convertedAmount: number; // Amount in IQD (for USD entries, this is the converted amount)
+  exchangeRate?: number; // Exchange rate used for conversion (USD entries only)
+  rateDate?: string; // Date of exchange rate used
   date: string;
   description: string;
   createdBy: string;

@@ -3,12 +3,15 @@ import { useLanguage } from '../../contexts/LanguageContext';
 import { useNotifications } from '../../contexts/NotificationContext';
 import { useBranches } from '../../contexts/BranchContext';
 import { useData } from '../../contexts/DataContext';
-import { Plus, Edit, Trash2, Users, Award, Calculator, DollarSign, Clock, User, History, Phone, MapPin, Calendar, CreditCard, Filter } from 'lucide-react';
+import { useAuth } from '../../contexts/AuthContext';
+import { Plus, Edit, Trash2, Users, Award, Calculator, DollarSign, Clock, User, History, Phone, MapPin, Calendar, CreditCard, Filter, Building, Wallet } from 'lucide-react';
 import Button from '../Common/Button';
 import Input from '../Common/Input';
 import Select from '../Common/Select';
 import Modal from '../Common/Modal';
+import CurrencyAmountInput from '../Common/CurrencyAmountInput';
 import { Employee } from '../../types';
+import { CurrencyConversion, formatCurrency } from '../../utils/currency';
 import apiService from '../../services/api';
 
 const HRModule: React.FC = () => {
@@ -16,17 +19,31 @@ const HRModule: React.FC = () => {
   const { addNotification } = useNotifications();
   const { accountingBranches, marketBranches } = useBranches();
   const allBranches = [...accountingBranches, ...marketBranches];
-  const { employees, adjustments, addEmployee, updateEmployee, deleteEmployee, payEmployeeSalary, addAdjustment } = useData();
+  const { employees, adjustments, addEmployee, updateEmployee, deleteEmployee, payEmployeeSalary, addAdjustment, salaryWithdrawals, addSalaryWithdrawal, getEmployeeAvailableBalance } = useData();
+  const { user } = useAuth();
+
+  // Check if current user is accountant (withdrawal permissions only)
+  const isAccountant = user?.role?.name === 'accountant';
   
-  const [activeTab, setActiveTab] = useState<'employees' | 'adjustments'>('employees');
+  const [activeTab, setActiveTab] = useState<'employees' | 'adjustments' | 'withdrawals'>('employees');
+
+  // Redirect accountants away from restricted tabs
+  useEffect(() => {
+    if (isAccountant && activeTab === 'adjustments') {
+      setActiveTab('employees');
+    }
+  }, [isAccountant, activeTab]);
   const [showAddModal, setShowAddModal] = useState(false);
   const [keepFormOpen, setKeepFormOpen] = useState(true);
   const [showPayModal, setShowPayModal] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
+  const [showWithdrawalModal, setShowWithdrawalModal] = useState(false);
   const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
   const [profileEmployee, setProfileEmployee] = useState<Employee | null>(null);
   const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null);
+  const [withdrawalEmployee, setWithdrawalEmployee] = useState<Employee | null>(null);
+  const [employeeBalance, setEmployeeBalance] = useState<any>(null);
   
   // Filter and search states
   const [selectedBranch, setSelectedBranch] = useState('');
@@ -50,6 +67,17 @@ const HRModule: React.FC = () => {
       netPayroll: number;
     };
   } | null>(null);
+
+  // Withdrawal form state
+  const [newWithdrawal, setNewWithdrawal] = useState({
+    employeeId: '',
+    amount: '',
+    currency: 'IQD' as 'USD' | 'IQD',
+    withdrawalDate: new Date().toISOString().split('T')[0],
+    notes: ''
+  });
+
+  const [withdrawalConversion, setWithdrawalConversion] = useState<CurrencyConversion | null>(null);
 
   // Load payroll summary on component mount
   useEffect(() => {
@@ -79,6 +107,7 @@ const HRModule: React.FC = () => {
   const empLocationRef = useRef<HTMLInputElement>(null);
   const empSalaryRef = useRef<HTMLInputElement>(null);
   const empSalaryDaysRef = useRef<HTMLInputElement>(null);
+  const empDepositRef = useRef<HTMLInputElement>(null);
   const empStartDateRef = useRef<HTMLInputElement>(null);
 
   // Refs for Edit Employee form
@@ -88,6 +117,7 @@ const HRModule: React.FC = () => {
   const editEmpLocationRef = useRef<HTMLInputElement>(null);
   const editEmpSalaryRef = useRef<HTMLInputElement>(null);
   const editEmpSalaryDaysRef = useRef<HTMLInputElement>(null);
+  const editEmpDepositRef = useRef<HTMLInputElement>(null);
   const editEmpStartDateRef = useRef<HTMLInputElement>(null);
 
   // Refs for Adjustment form
@@ -102,15 +132,26 @@ const HRModule: React.FC = () => {
   const payAmountRef = useRef<HTMLInputElement>(null);
   const payNotesRef = useRef<HTMLInputElement>(null);
 
+  // Refs for Withdrawal form
+  const withdrawalEmployeeRef = useRef<HTMLSelectElement>(null);
+  const withdrawalAmountRef = useRef<HTMLInputElement>(null);
+  const withdrawalDateRef = useRef<HTMLInputElement>(null);
+  const withdrawalNotesRef = useRef<HTMLInputElement>(null);
+
   const [newEmployee, setNewEmployee] = useState({
     branchId: '',
     name: '',
     phone: '',
     location: '',
     salary: '',
+    salaryCurrency: 'IQD' as 'USD' | 'IQD',
     salaryDays: '30',
+    deposit: '',
+    depositCurrency: 'IQD' as 'USD' | 'IQD',
     startDate: new Date().toISOString().split('T')[0]
   });
+
+  const [employeeConversion, setEmployeeConversion] = useState<CurrencyConversion | null>(null);
 
   const [editEmployee, setEditEmployee] = useState({
     branchId: '',
@@ -118,23 +159,46 @@ const HRModule: React.FC = () => {
     phone: '',
     location: '',
     salary: '',
+    salaryCurrency: 'IQD' as 'USD' | 'IQD',
     salaryDays: '30',
+    deposit: '',
+    depositCurrency: 'IQD' as 'USD' | 'IQD',
     startDate: ''
   });
+
+  const [editEmployeeConversion, setEditEmployeeConversion] = useState<CurrencyConversion | null>(null);
 
   const [newAdjustment, setNewAdjustment] = useState({
     employeeId: '',
     type: 'penalty' as 'penalty' | 'bonus',
     amount: '',
+    currency: 'IQD' as 'USD' | 'IQD',
     date: new Date().toISOString().split('T')[0],
     description: ''
   });
+
+  const [adjustmentConversion, setAdjustmentConversion] = useState<CurrencyConversion | null>(null);
 
   const [paymentData, setPaymentData] = useState({
     paymentDate: new Date().toISOString().split('T')[0],
     paidAmount: '',
     notes: ''
   });
+
+  const [paymentCalculation, setPaymentCalculation] = useState<{
+    baseSalary: number;
+    totalWithdrawals: number;
+    netAmountToPay: number;
+    withdrawalDetails: string;
+  } | null>(null);
+
+  // Safe date formatting function
+  const formatSafeDate = (dateString: string) => {
+    if (!dateString) return 'Not set';
+    const date = new Date(dateString);
+    if (isNaN(date.getTime())) return 'Invalid date';
+    return date.toLocaleDateString();
+  };
 
   // Handle Enter key navigation for Employee form
   const handleEmployeeKeyDown = (e: React.KeyboardEvent, currentField: string) => {
@@ -157,6 +221,9 @@ const HRModule: React.FC = () => {
           empSalaryDaysRef.current?.focus();
           break;
         case 'salaryDays':
+          empDepositRef.current?.focus();
+          break;
+        case 'deposit':
           empStartDateRef.current?.focus();
           break;
         case 'startDate':
@@ -187,6 +254,9 @@ const HRModule: React.FC = () => {
           editEmpSalaryDaysRef.current?.focus();
           break;
         case 'salaryDays':
+          editEmpDepositRef.current?.focus();
+          break;
+        case 'deposit':
           editEmpStartDateRef.current?.focus();
           break;
         case 'startDate':
@@ -256,7 +326,12 @@ const HRModule: React.FC = () => {
         phone: newEmployee.phone,
         location: newEmployee.location,
         salary: parseFloat(newEmployee.salary),
+        salaryCurrency: newEmployee.salaryCurrency || 'IQD',
+        convertedSalary: parseFloat(newEmployee.salary), // Same as salary since we're defaulting to IQD
         salaryDays: parseInt(newEmployee.salaryDays),
+        deposit: parseFloat(newEmployee.deposit || '0'),
+        depositCurrency: newEmployee.depositCurrency || 'IQD',
+        convertedDeposit: parseFloat(newEmployee.deposit || '0'), // Same as deposit since we're defaulting to IQD
         startDate: newEmployee.startDate,
         isActive: true,
         createdBy: 'current-user'
@@ -278,7 +353,10 @@ const HRModule: React.FC = () => {
           phone: '',
           location: newEmployee.location, // Keep the same location
           salary: '',
+          salaryCurrency: 'IQD',
           salaryDays: newEmployee.salaryDays, // Keep the same salary days
+          deposit: '',
+          depositCurrency: 'IQD',
           startDate: new Date().toISOString().split('T')[0]
         });
         // Focus back to first field
@@ -291,7 +369,10 @@ const HRModule: React.FC = () => {
           phone: '',
           location: '',
           salary: '',
+          salaryCurrency: 'IQD',
           salaryDays: '30',
+          deposit: '',
+          depositCurrency: 'IQD',
           startDate: new Date().toISOString().split('T')[0]
         });
       }
@@ -323,7 +404,12 @@ const HRModule: React.FC = () => {
         phone: editEmployee.phone,
         location: editEmployee.location,
         salary: parseFloat(editEmployee.salary),
+        salaryCurrency: editEmployee.salaryCurrency || 'IQD',
+        convertedSalary: parseFloat(editEmployee.salary), // Same as salary since defaulting to IQD
         salaryDays: parseInt(editEmployee.salaryDays),
+        deposit: parseFloat(editEmployee.deposit || '0'),
+        depositCurrency: editEmployee.depositCurrency || 'IQD',
+        convertedDeposit: parseFloat(editEmployee.deposit || '0'), // Same as deposit since defaulting to IQD
         startDate: editEmployee.startDate
       });
     
@@ -354,8 +440,11 @@ const HRModule: React.FC = () => {
       name: employee.name,
       phone: employee.phone || '',
       location: employee.location || '',
-      salary: employee.salary.toString(),
-      salaryDays: employee.salaryDays.toString(),
+      salary: (employee.salary || 0).toString(),
+      salaryCurrency: employee.salaryCurrency || 'IQD',
+      salaryDays: (employee.salaryDays || 30).toString(),
+      deposit: (employee.deposit || 0).toString(),
+      depositCurrency: employee.depositCurrency || 'IQD',
       startDate: employee.startDate
     });
     setShowEditModal(true);
@@ -402,6 +491,8 @@ const HRModule: React.FC = () => {
         employeeId: newAdjustment.employeeId,
         type: newAdjustment.type,
         amount: parseFloat(newAdjustment.amount),
+        currency: newAdjustment.currency || 'IQD',
+        convertedAmount: parseFloat(newAdjustment.amount), // Same as amount since defaulting to IQD
         date: newAdjustment.date,
         description: newAdjustment.description,
         createdBy: 'current-user'
@@ -421,6 +512,7 @@ const HRModule: React.FC = () => {
           employeeId: newAdjustment.employeeId, // Keep the same employee
           type: newAdjustment.type, // Keep the same type
           amount: '',
+          currency: 'IQD',
           date: new Date().toISOString().split('T')[0],
           description: ''
         });
@@ -432,6 +524,7 @@ const HRModule: React.FC = () => {
           employeeId: '',
           type: 'penalty',
           amount: '',
+          currency: 'IQD',
           date: new Date().toISOString().split('T')[0],
           description: ''
         });
@@ -479,6 +572,7 @@ const HRModule: React.FC = () => {
         paidAmount: '',
         notes: ''
       });
+      setPaymentCalculation(null);
       setSelectedEmployee(null);
       setShowPayModal(false);
     } catch {
@@ -491,14 +585,77 @@ const HRModule: React.FC = () => {
     }
   };
 
-  const openPayModal = (employee: Employee) => {
+  const openPayModal = async (employee: Employee) => {
     setSelectedEmployee(employee);
+    
+    try {
+      // Get employee balance which includes withdrawal calculations
+      const balance = await getEmployeeAvailableBalance(employee.id);
+      const baseSalary = getEmployeeNetSalary(employee);
+      
+      // Calculate withdrawals for current salary period
+      let totalWithdrawals = 0;
+      let withdrawalDetails = '';
+      
+      if (balance.balanceSource === 'unpaid_salary_period') {
+        // If this is an unpaid salary period, get withdrawals from that period
+        const employeeWithdrawals = getEmployeeWithdrawals(employee.id);
+        
+        // For unpaid period, calculate withdrawals since last payment or start date
+        const lastPayment = employee.salaryPayments && employee.salaryPayments.length > 0 
+          ? employee.salaryPayments.sort((a, b) => new Date(b.paymentDate).getTime() - new Date(a.paymentDate).getTime())[0]
+          : null;
+        
+        const periodStart = lastPayment 
+          ? new Date(lastPayment.paymentDate)
+          : new Date(employee.startDate);
+        
+        // Add 1 day to period start if there was a last payment
+        if (lastPayment) {
+          periodStart.setDate(periodStart.getDate() + 1);
+        }
+        
+        const relevantWithdrawals = employeeWithdrawals.filter(withdrawal => {
+          const withdrawalDate = new Date(withdrawal.withdrawalDate);
+          return withdrawalDate >= periodStart;
+        });
+        
+        totalWithdrawals = relevantWithdrawals.reduce((sum, w) => sum + (w.convertedAmount || w.amount || 0), 0);
+        withdrawalDetails = `${relevantWithdrawals.length} withdrawal(s) totaling ${totalWithdrawals.toLocaleString()} IQD`;
+      }
+      
+      // Calculate net amount to pay
+      const netAmountToPay = Math.max(0, baseSalary - totalWithdrawals);
+      
+      setPaymentData({
+        paymentDate: new Date().toISOString().split('T')[0],
+        paidAmount: netAmountToPay.toString(),
+        notes: totalWithdrawals > 0 ? `Deducted ${totalWithdrawals.toLocaleString()} IQD in withdrawals` : ''
+      });
+      
+      // Store withdrawal info for display in modal
+      setPaymentCalculation({
+        baseSalary,
+        totalWithdrawals,
+        netAmountToPay,
+        withdrawalDetails
+      });
+      
+      setSelectedEmployee(employee);
+      
+    } catch (error) {
+      console.error('Error calculating payment:', error);
+      // Fallback to basic calculation
     const netSalary = getEmployeeNetSalary(employee);
     setPaymentData({
       paymentDate: new Date().toISOString().split('T')[0],
       paidAmount: netSalary.toString(),
       notes: ''
     });
+      setPaymentCalculation(null);
+      setSelectedEmployee(employee);
+    }
+    
     setShowPayModal(true);
     // Focus first field when modal opens
     setTimeout(() => payDateRef.current?.focus(), 100);
@@ -510,21 +667,30 @@ const HRModule: React.FC = () => {
   };
 
   const getEmployeeAdjustments = (employeeId: string) => {
-    return adjustments.filter(adj => adj.employeeId === employeeId);
+    return adjustments.filter(adjustment => adjustment.employeeId === employeeId);
+  };
+
+  const getEmployeeWithdrawals = (employeeId: string) => {
+    return salaryWithdrawals.filter(withdrawal => withdrawal.employeeId === employeeId);
   };
 
   const getEmployeeNetSalary = (employee: Employee) => {
     const empAdjustments = getEmployeeAdjustments(employee.id);
-    const bonuses = empAdjustments.filter(adj => adj.type === 'bonus').reduce((sum, adj) => sum + adj.amount, 0);
-    const penalties = empAdjustments.filter(adj => adj.type === 'penalty').reduce((sum, adj) => sum + adj.amount, 0);
-    return employee.salary + bonuses - penalties;
+    const bonuses = empAdjustments.filter(adj => adj.type === 'bonus').reduce((sum, adj) => sum + (adj.convertedAmount || adj.amount || 0), 0);
+    const penalties = empAdjustments.filter(adj => adj.type === 'penalty').reduce((sum, adj) => sum + (adj.convertedAmount || adj.amount || 0), 0);
+    
+    return (employee.convertedSalary || employee.salary || 0) + bonuses - penalties;
   };
 
   const getDailySalary = (employee: Employee) => {
+    if (!employee.salary || !employee.salaryDays || employee.salaryDays === 0) {
+      return 0;
+    }
     return employee.salary / employee.salaryDays;
   };
 
   const getSalaryPeriodText = (days: number) => {
+    if (!days || isNaN(days) || days <= 0) return 'Not set';
     if (days === 1) return 'Daily';
     if (days === 7) return 'Weekly';
     if (days === 14) return 'Bi-weekly';
@@ -536,7 +702,15 @@ const HRModule: React.FC = () => {
 
   // Calculate when the next payment is due
   const getNextPaymentDate = (employee: Employee) => {
+    if (!employee.startDate || !employee.salaryDays || employee.salaryDays <= 0) {
+      return new Date(); // Return today if data is invalid
+    }
+    
     const startDate = new Date(employee.startDate);
+    if (isNaN(startDate.getTime())) {
+      return new Date(); // Return today if start date is invalid
+    }
+    
     const today = new Date();
     
     // If employee has payment history, use last payment date as base
@@ -544,9 +718,11 @@ const HRModule: React.FC = () => {
       const lastPayment = employee.salaryPayments
         .sort((a, b) => new Date(b.paymentDate).getTime() - new Date(a.paymentDate).getTime())[0];
       const lastPaymentDate = new Date(lastPayment.paymentDate);
+      if (!isNaN(lastPaymentDate.getTime())) {
       const nextPaymentDate = new Date(lastPaymentDate);
       nextPaymentDate.setDate(nextPaymentDate.getDate() + employee.salaryDays);
       return nextPaymentDate;
+      }
     }
     
     // If no payment history, calculate from start date
@@ -560,30 +736,191 @@ const HRModule: React.FC = () => {
 
   // Check if payment is due
   const isPaymentDue = (employee: Employee) => {
-    const nextPaymentDate = getNextPaymentDate(employee);
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    nextPaymentDate.setHours(0, 0, 0, 0);
+    if (!employee.startDate || !employee.salaryDays) {
+      return false;
+    }
     
-    return today >= nextPaymentDate;
+    const startDate = new Date(employee.startDate);
+    const today = new Date();
+    
+    // For new employees with no payment history, check if first salary period has passed
+    if (!employee.salaryPayments || employee.salaryPayments.length === 0) {
+      const daysSinceStart = Math.floor((today.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
+      // Payment is due only if salary days have passed since start date
+      return daysSinceStart >= employee.salaryDays;
+    }
+    
+    // For employees with payment history, check if salary period has passed since last payment
+    const lastPayment = employee.salaryPayments
+      .sort((a, b) => new Date(b.paymentDate).getTime() - new Date(a.paymentDate).getTime())[0];
+    
+    if (!lastPayment) {
+      // No valid payment found, treat as new employee
+      const daysSinceStart = Math.floor((today.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
+      return daysSinceStart >= employee.salaryDays;
+    }
+    
+    const lastPaymentDate = new Date(lastPayment.paymentDate);
+    
+    // Calculate days since last payment
+    const daysSinceLastPayment = Math.floor((today.getTime() - lastPaymentDate.getTime()) / (1000 * 60 * 60 * 24));
+    
+    // Payment is due only if salary days have passed since last payment
+    return daysSinceLastPayment >= employee.salaryDays;
   };
 
   // Get days until next payment
   const getDaysUntilNextPayment = (employee: Employee) => {
-    const nextPaymentDate = getNextPaymentDate(employee);
+    if (!employee.startDate || !employee.salaryDays) {
+      return 0;
+    }
+    
+    const startDate = new Date(employee.startDate);
     const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    nextPaymentDate.setHours(0, 0, 0, 0);
     
-    const diffTime = nextPaymentDate.getTime() - today.getTime();
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    // For new employees with no payment history, calculate from start date
+    if (!employee.salaryPayments || employee.salaryPayments.length === 0) {
+      const daysSinceStart = Math.floor((today.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
+      const daysRemaining = employee.salaryDays - daysSinceStart;
+      return Math.max(0, daysRemaining);
+    }
     
-    return diffDays;
+    // For employees with payment history, calculate days remaining from last payment
+    const lastPayment = employee.salaryPayments
+      .sort((a, b) => new Date(b.paymentDate).getTime() - new Date(a.paymentDate).getTime())[0];
+    
+    if (!lastPayment) {
+      // No valid payment found, calculate from start date
+      const daysSinceStart = Math.floor((today.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
+      const daysRemaining = employee.salaryDays - daysSinceStart;
+      return Math.max(0, daysRemaining);
+    }
+    
+    const lastPaymentDate = new Date(lastPayment.paymentDate);
+    
+    // Calculate days since last payment
+    const daysSinceLastPayment = Math.floor((today.getTime() - lastPaymentDate.getTime()) / (1000 * 60 * 60 * 24));
+    
+    // Calculate remaining days until next payment is due
+    const daysRemaining = employee.salaryDays - daysSinceLastPayment;
+    
+    return Math.max(0, daysRemaining); // Ensure we don't return negative days
+  };
+
+  // Handle withdrawal key navigation
+  const handleWithdrawalKeyDown = (e: React.KeyboardEvent, currentField: string) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      switch (currentField) {
+        case 'employee':
+          withdrawalAmountRef.current?.focus();
+          break;
+        case 'amount':
+          withdrawalDateRef.current?.focus();
+          break;
+        case 'date':
+          withdrawalNotesRef.current?.focus();
+          break;
+        case 'notes':
+          handleAddWithdrawal();
+          break;
+      }
+    }
+  };
+
+  // Handle salary withdrawal
+  const handleAddWithdrawal = async () => {
+    if (!newWithdrawal.employeeId || !newWithdrawal.amount) {
+      addNotification({
+        type: 'payroll',
+        title: 'Missing Information',
+        message: 'Please fill in all required fields.',
+        priority: 'medium'
+      });
+      return;
+    }
+
+    try {
+      // Get balance for notification purposes
+      const balance = await getEmployeeAvailableBalance(newWithdrawal.employeeId);
+      const withdrawalAmount = parseFloat(newWithdrawal.amount);
+
+      await addSalaryWithdrawal({
+        employeeId: newWithdrawal.employeeId,
+        amount: withdrawalAmount,
+        currency: newWithdrawal.currency || 'IQD',
+        convertedAmount: withdrawalAmount, // Same as amount since defaulting to IQD
+        withdrawalDate: newWithdrawal.withdrawalDate,
+        notes: newWithdrawal.notes,
+        createdBy: user?.id || 'unknown'
+      });
+      
+      // Add notification for withdrawal
+      const employee = employees.find(emp => emp.id === newWithdrawal.employeeId);
+      addNotification({
+        type: 'payroll',
+        title: 'Salary Withdrawal Processed',
+        message: `Withdrawal of ${withdrawalAmount.toLocaleString()} IQD has been processed for ${employee?.name || 'employee'}.`,
+        priority: 'low'
+      });
+      
+      if (keepFormOpen) {
+        // Keep the modal open and reset form for next entry
+        setNewWithdrawal({
+          employeeId: newWithdrawal.employeeId, // Keep the same employee
+          amount: '',
+          currency: 'IQD',
+          withdrawalDate: new Date().toISOString().split('T')[0],
+          notes: ''
+        });
+        // Focus back to amount field
+        setTimeout(() => withdrawalAmountRef.current?.focus(), 100);
+      } else {
+        setShowWithdrawalModal(false);
+        setNewWithdrawal({
+          employeeId: '',
+          amount: '',
+          currency: 'IQD',
+          withdrawalDate: new Date().toISOString().split('T')[0],
+          notes: ''
+        });
+      }
+    } catch (error) {
+      addNotification({
+        type: 'payroll',
+        title: 'Error',
+        message: 'Failed to process salary withdrawal. Please try again.',
+        priority: 'high'
+      });
+    }
+  };
+
+  // Open withdrawal modal
+  const openWithdrawalModal = async (employee: Employee) => {
+    setWithdrawalEmployee(employee);
+    
+    try {
+      const balance = await getEmployeeAvailableBalance(employee.id);
+      setEmployeeBalance(balance);
+    } catch (error) {
+      console.error('Error fetching employee balance:', error);
+    }
+    
+    setNewWithdrawal({
+      employeeId: employee.id,
+      amount: '',
+      currency: 'IQD',
+      withdrawalDate: new Date().toISOString().split('T')[0],
+      notes: ''
+    });
+    setShowWithdrawalModal(true);
+    setTimeout(() => withdrawalAmountRef.current?.focus(), 100);
   };
 
   const tabs = [
     { id: 'employees', label: t('employees'), icon: Users },
-    { id: 'adjustments', label: t('adjustments'), icon: Award }
+    ...(isAccountant ? [] : [{ id: 'adjustments', label: t('adjustments'), icon: Award }]),
+    { id: 'withdrawals', label: t('withdrawals'), icon: DollarSign }
   ];
 
   return (
@@ -593,6 +930,7 @@ const HRModule: React.FC = () => {
         <h1 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white">
           {t('hr')}
         </h1>
+        {!(isAccountant && activeTab === 'employees') && !(isAccountant && activeTab === 'adjustments') && (
         <Button
           onClick={() => {
             setShowAddModal(true);
@@ -602,14 +940,17 @@ const HRModule: React.FC = () => {
                 empBranchRef.current?.focus();
               } else if (activeTab === 'adjustments') {
                 adjEmployeeRef.current?.focus();
+                } else if (activeTab === 'withdrawals') {
+                  setShowWithdrawalModal(true);
               }
             }, 100);
           }}
           className="flex items-center justify-center w-full sm:w-auto"
         >
           <Plus className="w-4 h-4 mr-2" />
-          {activeTab === 'employees' ? t('addEmployee') : 'Add Adjustment'}
+            {activeTab === 'employees' ? t('addEmployee') : activeTab === 'adjustments' ? 'Add Adjustment' : t('addWithdrawal')}
         </Button>
+        )}
       </div>
 
       {/* Payroll Summary by Branch */}
@@ -633,23 +974,23 @@ const HRModule: React.FC = () => {
                   </div>
                   <div className="flex justify-between">
                     <span className="text-gray-600 dark:text-gray-300">Total Salary:</span>
-                    <span className="font-medium text-green-600 dark:text-green-400">{branch.totalSalary.toLocaleString()} IQD</span>
+                    <span className="font-medium text-green-600 dark:text-green-400">{(branch.totalSalary || 0).toLocaleString()} IQD</span>
                   </div>
-                  {branch.totalBonuses > 0 && (
+                  {(branch.totalBonuses || 0) > 0 && (
                     <div className="flex justify-between">
                       <span className="text-gray-600 dark:text-gray-300">Bonuses:</span>
-                      <span className="font-medium text-blue-600 dark:text-blue-400">+{branch.totalBonuses.toLocaleString()} IQD</span>
+                      <span className="font-medium text-blue-600 dark:text-blue-400">+{(branch.totalBonuses || 0).toLocaleString()} IQD</span>
                     </div>
                   )}
-                  {branch.totalPenalties > 0 && (
+                  {(branch.totalPenalties || 0) > 0 && (
                     <div className="flex justify-between">
                       <span className="text-gray-600 dark:text-gray-300">Penalties:</span>
-                      <span className="font-medium text-red-600 dark:text-red-400">-{branch.totalPenalties.toLocaleString()} IQD</span>
+                      <span className="font-medium text-red-600 dark:text-red-400">-{(branch.totalPenalties || 0).toLocaleString()} IQD</span>
                     </div>
                   )}
                   <div className="flex justify-between pt-1 border-t border-blue-200 dark:border-blue-600">
                     <span className="text-gray-700 dark:text-gray-200 font-medium">Net Payroll:</span>
-                    <span className="font-bold text-gray-900 dark:text-white">{branch.netPayroll.toLocaleString()} IQD</span>
+                    <span className="font-bold text-gray-900 dark:text-white">{(branch.netPayroll || 0).toLocaleString()} IQD</span>
                   </div>
                 </div>
               </div>
@@ -661,15 +1002,15 @@ const HRModule: React.FC = () => {
               <div className="space-y-1 text-sm">
                 <div className="flex justify-between">
                   <span className="text-gray-600 dark:text-gray-300">All Employees:</span>
-                  <span className="font-medium text-gray-900 dark:text-white">{payrollSummary.overall.totalEmployees}</span>
+                  <span className="font-medium text-gray-900 dark:text-white">{payrollSummary.overall.totalEmployees || 0}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-gray-600 dark:text-gray-300">Total Salary:</span>
-                  <span className="font-medium text-green-600 dark:text-green-400">{payrollSummary.overall.totalSalary.toLocaleString()} IQD</span>
+                  <span className="font-medium text-green-600 dark:text-green-400">{(payrollSummary.overall.totalSalary || 0).toLocaleString()} IQD</span>
                 </div>
                 <div className="flex justify-between pt-1 border-t border-gray-200 dark:border-gray-600">
                   <span className="text-gray-700 dark:text-gray-200 font-medium">Net Payroll:</span>
-                  <span className="font-bold text-gray-900 dark:text-white">{payrollSummary.overall.netPayroll.toLocaleString()} IQD</span>
+                  <span className="font-bold text-gray-900 dark:text-white">{(payrollSummary.overall.netPayroll || 0).toLocaleString()} IQD</span>
                 </div>
               </div>
             </div>
@@ -740,7 +1081,7 @@ const HRModule: React.FC = () => {
             {tabs.map((tab) => (
               <button
                 key={tab.id}
-                onClick={() => setActiveTab(tab.id as 'employees' | 'adjustments')}
+                onClick={() => setActiveTab(tab.id as 'employees' | 'adjustments' | 'withdrawals')}
                 className={`flex items-center py-4 px-1 border-b-2 font-medium text-sm whitespace-nowrap ${
                   activeTab === tab.id
                     ? 'border-blue-500 text-blue-600 dark:text-blue-400'
@@ -767,10 +1108,10 @@ const HRModule: React.FC = () => {
                     <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider hidden sm:table-cell">
                       {t('phone')}
                     </th>
-                    <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider hidden lg:table-cell">
+                    <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider hidden md:table-cell">
                       {t('branch')}
                     </th>
-                    <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider hidden md:table-cell">
+                    <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider hidden lg:table-cell">
                       {t('location')}
                     </th>
                     <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
@@ -799,13 +1140,18 @@ const HRModule: React.FC = () => {
                       <td className="px-3 sm:px-6 py-4 text-sm font-medium text-gray-900 dark:text-white">
                         {employee.name}
                         <div className="sm:hidden text-xs text-gray-500 dark:text-gray-400 mt-1">
-                          {employee.phone || 'No phone'} • {getSalaryPeriodText(employee.salaryDays)}
+                          <div className="mb-1">
+                            <Building className="w-3 h-3 inline mr-1" /> {allBranches.find(branch => branch.id === employee.branchId)?.name || 'No branch'} ({allBranches.find(branch => branch.id === employee.branchId)?.moduleType || 'Unknown'})
+                          </div>
+                          <div>
+                            📞 {employee.phone || 'No phone'} • ⏱️ {getSalaryPeriodText(employee.salaryDays)}
+                          </div>
                         </div>
                       </td>
                       <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white hidden sm:table-cell">
                         {employee.phone || '-'}
                       </td>
-                      <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white hidden lg:table-cell">
+                      <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white hidden md:table-cell">
                         {employee.branchId ? (
                           <div className="text-xs">
                             <div className="font-medium">
@@ -819,12 +1165,12 @@ const HRModule: React.FC = () => {
                           <span className="text-gray-400">-</span>
                         )}
                       </td>
-                      <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white hidden md:table-cell">
+                      <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white hidden lg:table-cell">
                         {employee.location || '-'}
                       </td>
                       <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
                         <div>
-                          <div className="font-medium">{employee.salary.toLocaleString()} IQD</div>
+                          <div className="font-medium">{(employee.salary || 0).toLocaleString()} IQD</div>
                           <div className="text-xs text-gray-500 dark:text-gray-400 sm:hidden">
                             {getSalaryPeriodText(employee.salaryDays)} • {getDailySalary(employee).toFixed(0)} IQD/day
                           </div>
@@ -859,7 +1205,7 @@ const HRModule: React.FC = () => {
                         </div>
                       </td>
                       <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white hidden lg:table-cell">
-                        {new Date(employee.startDate).toLocaleDateString()}
+                        {formatSafeDate(employee.startDate)}
                       </td>
                       <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white hidden md:table-cell">
                         {isPaymentDue(employee) ? (
@@ -881,6 +1227,7 @@ const HRModule: React.FC = () => {
                         >
                           <User className="w-4 h-4" />
                         </button>
+                        {!isAccountant && (
                         <button 
                           onClick={() => openEditModal(employee)}
                           className="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300"
@@ -888,6 +1235,8 @@ const HRModule: React.FC = () => {
                         >
                           <Edit className="w-4 h-4" />
                         </button>
+                        )}
+                        {!isAccountant && (
                         <button 
                           onClick={() => handleDeleteEmployee(employee)}
                           className="text-red-600 dark:text-red-400 hover:text-red-800 dark:hover:text-red-300"
@@ -895,7 +1244,15 @@ const HRModule: React.FC = () => {
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>
-                        {isPaymentDue(employee) ? (
+                        )}
+                        <button 
+                          onClick={() => openWithdrawalModal(employee)}
+                          className="text-purple-600 dark:text-purple-400 hover:text-purple-800 dark:hover:text-purple-300"
+                          title="Salary Withdrawal"
+                        >
+                          <Wallet className="w-4 h-4" />
+                        </button>
+                        {!isAccountant && isPaymentDue(employee) ? (
                           <button 
                             onClick={() => openPayModal(employee)}
                             className="text-yellow-600 dark:text-yellow-400 hover:text-yellow-800 dark:hover:text-yellow-300"
@@ -903,7 +1260,7 @@ const HRModule: React.FC = () => {
                           >
                             <DollarSign className="w-4 h-4" />
                           </button>
-                        ) : (
+                        ) : !isAccountant ? (
                           <button 
                             className="text-gray-400 dark:text-gray-600 cursor-not-allowed"
                             title={`Next payment in ${getDaysUntilNextPayment(employee)} days`}
@@ -911,7 +1268,7 @@ const HRModule: React.FC = () => {
                           >
                             <Clock className="w-4 h-4" />
                           </button>
-                        )}
+                        ) : null}
                         </div>
                       </td>
                     </tr>
@@ -936,6 +1293,9 @@ const HRModule: React.FC = () => {
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
                       Employee
                     </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider hidden sm:table-cell">
+                      Branch
+                    </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
                       Type
                     </th>
@@ -956,7 +1316,26 @@ const HRModule: React.FC = () => {
                     return (
                       <tr key={adjustment.id} className="hover:bg-gray-50 dark:hover:bg-gray-700">
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
-                          {employee?.name || 'Unknown'}
+                          <div>
+                            <div className="font-medium">{employee?.name || 'Unknown'}</div>
+                            <div className="text-xs text-gray-500 dark:text-gray-400 sm:hidden">
+                              <Building className="w-3 h-3 inline mr-1" /> {allBranches.find(branch => branch.id === employee?.branchId)?.name || 'No branch'}
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white hidden sm:table-cell">
+                          {employee?.branchId ? (
+                            <div className="text-xs">
+                              <div className="font-medium">
+                                {allBranches.find(branch => branch.id === employee.branchId)?.name || 'Unknown'}
+                              </div>
+                              <div className="text-gray-500 dark:text-gray-400">
+                                {allBranches.find(branch => branch.id === employee.branchId)?.moduleType || ''}
+                              </div>
+                            </div>
+                          ) : (
+                            <span className="text-gray-400">-</span>
+                          )}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <span className={`px-2 py-1 text-xs font-medium rounded-full ${
@@ -971,7 +1350,7 @@ const HRModule: React.FC = () => {
                           {adjustment.amount.toLocaleString()} IQD
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
-                          {new Date(adjustment.date).toLocaleDateString()}
+                          {formatSafeDate(adjustment.date)}
                         </td>
                         <td className="px-6 py-4 text-sm text-gray-900 dark:text-white">
                           {adjustment.description}
@@ -981,7 +1360,7 @@ const HRModule: React.FC = () => {
                   })}
                   {adjustments.length === 0 && (
                     <tr>
-                      <td colSpan={5} className="px-6 py-4 text-center text-gray-500 dark:text-gray-400">
+                      <td colSpan={6} className="px-6 py-4 text-center text-gray-500 dark:text-gray-400">
                         No adjustments found
                       </td>
                     </tr>
@@ -991,6 +1370,107 @@ const HRModule: React.FC = () => {
             </div>
           )}
 
+          {activeTab === 'withdrawals' && (
+            <div className="overflow-x-auto">
+              <table className="w-full table-auto">
+                <thead className="bg-gray-50 dark:bg-gray-700">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                      Employee
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider hidden sm:table-cell">
+                      Branch
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                      Amount
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                      Date
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider hidden md:table-cell">
+                      Notes
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                      Actions
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                  {salaryWithdrawals.map((withdrawal) => {
+                    const employee = employees.find(emp => emp.id === withdrawal.employeeId);
+                    return (
+                      <tr key={withdrawal.id} className="hover:bg-gray-50 dark:hover:bg-gray-700">
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
+                          <div>
+                            <div className="font-medium">{employee?.name || 'Unknown'}</div>
+                            <div className="text-xs text-gray-500 dark:text-gray-400 sm:hidden">
+                              <Building className="w-3 h-3 inline mr-1" /> {allBranches.find(branch => branch.id === employee?.branchId)?.name || 'No branch'}
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white hidden sm:table-cell">
+                          {employee?.branchId ? (
+                            <div className="text-xs">
+                              <div className="font-medium">
+                                {allBranches.find(branch => branch.id === employee.branchId)?.name || 'Unknown'}
+                              </div>
+                              <div className="text-gray-500 dark:text-gray-400">
+                                {allBranches.find(branch => branch.id === employee.branchId)?.moduleType || ''}
+                              </div>
+                            </div>
+                          ) : (
+                            <span className="text-gray-400">-</span>
+                          )}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
+                          <div>
+                            <div className="font-medium text-purple-600 dark:text-purple-400">
+                              {(withdrawal.convertedAmount || withdrawal.amount || 0).toLocaleString()} IQD
+                            </div>
+                            {withdrawal.currency === 'USD' && (
+                              <div className="text-xs text-gray-500 dark:text-gray-400">
+                                ${(withdrawal.amount || 0).toLocaleString()} USD
+                              </div>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
+                          {formatSafeDate(withdrawal.withdrawalDate)}
+                        </td>
+                        <td className="px-6 py-4 text-sm text-gray-900 dark:text-white hidden md:table-cell">
+                          <div className="max-w-xs truncate">
+                            {withdrawal.notes || '-'}
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                          <div className="flex space-x-2">
+                            <button 
+                              onClick={() => openWithdrawalModal(employee!)}
+                              className="text-purple-600 dark:text-purple-400 hover:text-purple-800 dark:hover:text-purple-300"
+                              title="New Withdrawal"
+                            >
+                              <Wallet className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {salaryWithdrawals.length === 0 && (
+                    <tr>
+                      <td colSpan={6} className="px-6 py-8 text-center text-gray-500 dark:text-gray-400">
+                        <div className="flex flex-col items-center">
+                          <Wallet className="w-12 h-12 mx-auto mb-4 text-gray-400" />
+                          <p>No salary withdrawals found</p>
+                          <p className="text-sm mt-1">Withdrawal records will appear here once processed</p>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )}
 
         </div>
       </div>
@@ -1143,6 +1623,16 @@ const HRModule: React.FC = () => {
           )}
           
           <Input
+            ref={empDepositRef}
+            label={t('deposit')}
+            type="number"
+            value={newEmployee.deposit}
+            onChange={(e) => setNewEmployee({...newEmployee, deposit: e.target.value})}
+            onKeyDown={(e) => handleEmployeeKeyDown(e, 'deposit')}
+            placeholder="Enter deposit in IQD"
+          />
+          
+          <Input
             ref={empStartDateRef}
             label={t('startDate')}
             type="date"
@@ -1278,9 +1768,12 @@ const HRModule: React.FC = () => {
               <div className="flex items-center space-x-2 mb-3">
                 <DollarSign className="w-5 h-5 text-green-600 dark:text-green-400" />
                 <span className="text-lg font-medium text-green-800 dark:text-green-200">
-                  Salary Payment Details
+                  Salary Payment Calculation
                 </span>
               </div>
+              
+              {paymentCalculation ? (
+                <div className="space-y-4">
               <div className="grid grid-cols-2 gap-4 text-sm">
                 <div>
                   <span className="text-green-600 dark:text-green-400">Employee:</span>
@@ -1289,6 +1782,54 @@ const HRModule: React.FC = () => {
                   </div>
                 </div>
                 <div>
+                      <span className="text-green-600 dark:text-green-400">Salary Period:</span>
+                      <div className="font-medium text-green-800 dark:text-green-200">
+                        {getSalaryPeriodText(selectedEmployee.salaryDays)}
+                      </div>
+                    </div>
+                  </div>
+                  
+                  {/* Payment Breakdown */}
+                  <div className="border-t border-green-200 dark:border-green-700 pt-3">
+                    <h4 className="font-semibold text-green-800 dark:text-green-200 mb-2">Payment Breakdown:</h4>
+                    <div className="space-y-2 text-sm">
+                      <div className="flex justify-between">
+                        <span className="text-green-600 dark:text-green-400">Base Salary:</span>
+                        <span className="font-medium text-green-800 dark:text-green-200">
+                          +{paymentCalculation.baseSalary.toLocaleString()} IQD
+                        </span>
+                      </div>
+                      {paymentCalculation.totalWithdrawals > 0 && (
+                        <div className="flex justify-between">
+                          <span className="text-red-600 dark:text-red-400">Withdrawals:</span>
+                          <span className="font-medium text-red-800 dark:text-red-200">
+                            -{paymentCalculation.totalWithdrawals.toLocaleString()} IQD
+                          </span>
+                        </div>
+                      )}
+                      <div className="border-t border-green-200 dark:border-green-700 pt-2 flex justify-between">
+                        <span className="font-semibold text-green-700 dark:text-green-300">Net Payment:</span>
+                        <span className="font-bold text-green-800 dark:text-green-200 text-lg">
+                          {paymentCalculation.netAmountToPay.toLocaleString()} IQD
+                        </span>
+                      </div>
+                    </div>
+                    {paymentCalculation.withdrawalDetails && (
+                      <div className="mt-2 text-xs text-green-600 dark:text-green-400">
+                        {paymentCalculation.withdrawalDetails}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <span className="text-green-600 dark:text-green-400">Employee:</span>
+                    <div className="font-medium text-green-800 dark:text-green-200">
+                      {selectedEmployee.name}
+                    </div>
+                  </div>
+                  <div>
                   <span className="text-green-600 dark:text-green-400">Base Salary:</span>
                   <div className="font-medium text-green-800 dark:text-green-200">
                     {selectedEmployee.salary.toLocaleString()} IQD
@@ -1307,6 +1848,7 @@ const HRModule: React.FC = () => {
                   </div>
                 </div>
               </div>
+              )}
             </div>
           )}
           
@@ -1348,6 +1890,7 @@ const HRModule: React.FC = () => {
               onClick={() => {
                 setShowPayModal(false);
                 setSelectedEmployee(null);
+                setPaymentCalculation(null);
               }} 
               className="flex-1"
             >
@@ -1403,7 +1946,7 @@ const HRModule: React.FC = () => {
                   </div>
                   {profileEmployee.branchId && (
                     <div className="flex items-center space-x-2">
-                      <MapPin className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                      <Building className="w-4 h-4 text-blue-600 dark:text-blue-400" />
                       <span className="text-sm text-gray-600 dark:text-gray-400">Branch:</span>
                       <span className="font-medium text-gray-900 dark:text-white">
                         {allBranches.find(branch => branch.id === profileEmployee.branchId)?.name || 'Unknown Branch'}
@@ -1417,7 +1960,7 @@ const HRModule: React.FC = () => {
                     <Calendar className="w-4 h-4 text-blue-600 dark:text-blue-400" />
                     <span className="text-sm text-gray-600 dark:text-gray-400">Start Date:</span>
                     <span className="font-medium text-gray-900 dark:text-white">
-                      {new Date(profileEmployee.startDate).toLocaleDateString()}
+                      {formatSafeDate(profileEmployee.startDate)}
                     </span>
                   </div>
                 </div>
@@ -1444,6 +1987,15 @@ const HRModule: React.FC = () => {
                       {getDailySalary(profileEmployee).toFixed(0)} IQD/day
                     </span>
                   </div>
+                  {profileEmployee.deposit && profileEmployee.deposit > 0 && (
+                    <div className="flex items-center space-x-2">
+                      <CreditCard className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                      <span className="text-sm text-gray-600 dark:text-gray-400">Deposit:</span>
+                      <span className="font-medium text-gray-900 dark:text-white">
+                        {(profileEmployee.deposit || 0).toLocaleString()} IQD
+                      </span>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -1476,7 +2028,7 @@ const HRModule: React.FC = () => {
                 </div>
                 {profileEmployee.lastPaidDate && (
                   <div className="mt-2 text-sm text-gray-600 dark:text-gray-400">
-                    Last paid: {new Date(profileEmployee.lastPaidDate).toLocaleDateString()}
+                    Last paid: {formatSafeDate(profileEmployee.lastPaidDate)}
                   </div>
                 )}
               </div>
@@ -1510,13 +2062,13 @@ const HRModule: React.FC = () => {
                                   {payment.amount.toLocaleString()} IQD
                                 </div>
                                 <div className="text-sm text-gray-600 dark:text-gray-400">
-                                  {new Date(payment.paymentDate).toLocaleDateString()}
+                                  {formatSafeDate(payment.paymentDate)}
                                 </div>
                               </div>
                             </div>
                             <div className="text-right">
                               <div className="text-sm text-gray-600 dark:text-gray-400">
-                                {new Date(payment.createdAt).toLocaleDateString()}
+                                {formatSafeDate(payment.createdAt)}
                               </div>
                               {payment.notes && (
                                 <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
@@ -1533,6 +2085,62 @@ const HRModule: React.FC = () => {
                     <History className="w-12 h-12 mx-auto mb-4 text-gray-400" />
                     <p>No payment history found</p>
                     <p className="text-sm mt-1">Payments will appear here once processed</p>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Withdrawal History */}
+            <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
+              <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+                <div className="flex items-center space-x-2">
+                  <Wallet className="w-5 h-5 text-gray-600 dark:text-gray-400" />
+                  <h4 className="text-lg font-semibold text-gray-900 dark:text-white">
+                    Withdrawal History
+                  </h4>
+                </div>
+              </div>
+              
+              <div className="max-h-64 overflow-y-auto">
+                {getEmployeeWithdrawals(profileEmployee.id).length > 0 ? (
+                  <div className="divide-y divide-gray-200 dark:divide-gray-700">
+                    {getEmployeeWithdrawals(profileEmployee.id)
+                      .sort((a, b) => new Date(b.withdrawalDate).getTime() - new Date(a.withdrawalDate).getTime())
+                      .map((withdrawal) => (
+                        <div key={withdrawal.id} className="px-6 py-4 hover:bg-gray-50 dark:hover:bg-gray-700">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center space-x-3">
+                              <div className="w-10 h-10 bg-red-100 dark:bg-red-900/20 rounded-full flex items-center justify-center">
+                                <Wallet className="w-5 h-5 text-red-600 dark:text-red-400" />
+                              </div>
+                              <div>
+                                <div className="font-medium text-gray-900 dark:text-white">
+                                  -{withdrawal.convertedAmount.toLocaleString()} IQD
+                                </div>
+                                <div className="text-sm text-gray-600 dark:text-gray-400">
+                                  {formatSafeDate(withdrawal.withdrawalDate)}
+                                </div>
+                              </div>
+                            </div>
+                            <div className="text-right">
+                              <div className="text-sm text-gray-600 dark:text-gray-400">
+                                {formatSafeDate(withdrawal.createdAt)}
+                              </div>
+                              {withdrawal.notes && (
+                                <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                                  {withdrawal.notes}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                  </div>
+                ) : (
+                  <div className="px-6 py-8 text-center text-gray-500 dark:text-gray-400">
+                    <Wallet className="w-12 h-12 mx-auto mb-4 text-gray-400" />
+                    <p>No withdrawal history found</p>
+                    <p className="text-sm mt-1">Withdrawals will appear here once processed</p>
                   </div>
                 )}
               </div>
@@ -1572,7 +2180,7 @@ const HRModule: React.FC = () => {
                               {adjustment.type === 'bonus' ? '+' : '-'}{adjustment.amount.toLocaleString()} IQD
                             </div>
                             <div className="text-xs text-gray-500 dark:text-gray-400">
-                              {new Date(adjustment.date).toLocaleDateString()}
+                              {formatSafeDate(adjustment.date)}
                             </div>
                           </div>
                         </div>
@@ -1598,6 +2206,17 @@ const HRModule: React.FC = () => {
                   Pay Salary
                 </Button>
               )}
+              <Button
+                onClick={() => {
+                  setShowProfileModal(false);
+                  openWithdrawalModal(profileEmployee);
+                }}
+                variant="secondary"
+                className="flex-1"
+              >
+                <Wallet className="w-4 h-4 mr-2" />
+                Add Withdrawal
+              </Button>
               <Button 
                 variant="outline" 
                 onClick={() => {
@@ -1745,6 +2364,16 @@ const HRModule: React.FC = () => {
           )}
           
           <Input
+            ref={editEmpDepositRef}
+            label={t('deposit')}
+            type="number"
+            value={editEmployee.deposit}
+            onChange={(e) => setEditEmployee({...editEmployee, deposit: e.target.value})}
+            onKeyDown={(e) => handleEditEmployeeKeyDown(e, 'deposit')}
+            placeholder="Enter deposit in IQD"
+          />
+          
+          <Input
             ref={editEmpStartDateRef}
             label={t('startDate')}
             type="date"
@@ -1762,6 +2391,169 @@ const HRModule: React.FC = () => {
               onClick={() => {
                 setShowEditModal(false);
                 setEditingEmployee(null);
+              }} 
+              className="flex-1"
+            >
+              {t('cancel')}
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Salary Withdrawal Modal */}
+      <Modal
+        isOpen={showWithdrawalModal}
+        onClose={() => {
+          setShowWithdrawalModal(false);
+          setWithdrawalEmployee(null);
+          setEmployeeBalance(null);
+        }}
+        title={`${t('withdrawal')} - ${withdrawalEmployee?.name || ''}`}
+      >
+        <div className="space-y-4">
+          {/* Employee Balance Info */}
+          {employeeBalance && (
+            <div className="p-4 bg-gradient-to-r from-purple-50 to-indigo-50 dark:from-purple-900/20 dark:to-indigo-900/20 rounded-lg border border-purple-200 dark:border-purple-700">
+              <div className="flex items-center space-x-2 mb-3">
+                <Wallet className="w-5 h-5 text-purple-600 dark:text-purple-400" />
+                <h4 className="font-semibold text-purple-800 dark:text-purple-200">
+                  {t('availableBalance')}
+                </h4>
+              </div>
+              
+              {/* Balance Source Indicator */}
+              <div className="mb-3 p-2 rounded-md bg-purple-100 dark:bg-purple-800/30">
+                <div className="text-sm text-purple-700 dark:text-purple-300 select-text cursor-text">
+                  <strong>Withdrawal Source:</strong>{' '}
+                  {employeeBalance.balanceSource === 'unpaid_salary_period' 
+                    ? 'Unpaid Salary Period (salary payment due)'
+                    : 'Current Earning Period (earning new salary)'
+                  }
+                </div>
+              </div>
+              
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div>
+                  <span className="text-purple-600 dark:text-purple-400 select-text">Base Salary:</span>
+                  <div className="font-medium text-purple-800 dark:text-purple-200 select-text cursor-text">
+                    {(employeeBalance.baseSalary || 0).toLocaleString()} IQD
+                  </div>
+                </div>
+                <div>
+                  <span className="text-purple-600 dark:text-purple-400 select-text">Salary Period:</span>
+                  <div className="font-medium text-purple-800 dark:text-purple-200 select-text cursor-text">
+                    {employeeBalance.salaryDays || 0} days
+                  </div>
+                </div>
+                <div>
+                  <span className="text-purple-600 dark:text-purple-400 select-text">Daily Rate:</span>
+                  <div className="font-medium text-purple-800 dark:text-purple-200 select-text cursor-text">
+                    {(employeeBalance.dailyRate || 0).toFixed(0)} IQD/day
+                  </div>
+                </div>
+                <div>
+                  <span className="text-purple-600 dark:text-purple-400 select-text">Available:</span>
+                  <div className="font-medium text-purple-800 dark:text-purple-200 select-text cursor-text">
+                    {(employeeBalance.availableBalance || 0).toFixed(0)} IQD
+                  </div>
+                </div>
+              </div>
+              
+              <div className="mt-3 pt-3 border-t border-purple-200 dark:border-purple-600">
+                <div className="flex justify-between items-center">
+                  <span className="text-purple-700 dark:text-purple-300 font-semibold select-text">
+                    Available Balance:
+                  </span>
+                  <span className="text-xl font-bold text-purple-800 dark:text-purple-200 select-text cursor-text">
+                    {(employeeBalance.availableBalance || 0).toFixed(0)} IQD
+                  </span>
+                </div>
+                <div className="mt-2 text-sm text-green-600 dark:text-green-400 select-text">
+                  You can withdraw any amount (no limit)
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Keep Form Open Toggle */}
+          <div className="flex items-center justify-between p-3 bg-purple-50 dark:bg-purple-900/20 rounded-lg">
+            <div className="flex items-center space-x-2">
+              <Plus className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+              <span className="text-sm font-medium text-purple-800 dark:text-purple-200">
+                Quick Entry Mode - Withdrawals
+              </span>
+            </div>
+            <label className="relative inline-flex items-center cursor-pointer">
+              <input
+                type="checkbox"
+                checked={keepFormOpen}
+                onChange={(e) => setKeepFormOpen(e.target.checked)}
+                className="sr-only peer"
+              />
+              <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-purple-300 dark:peer-focus:ring-purple-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-purple-600"></div>
+            </label>
+          </div>
+
+          <Select
+            ref={withdrawalEmployeeRef}
+            label="Employee"
+            value={newWithdrawal.employeeId}
+            onChange={(e) => setNewWithdrawal({...newWithdrawal, employeeId: e.target.value})}
+            onKeyDown={(e) => handleWithdrawalKeyDown(e, 'employee')}
+            options={[
+              { value: '', label: 'Select employee' },
+              ...employees.filter(emp => emp.isActive).map(emp => ({ 
+                value: emp.id, 
+                label: `${emp.name} - ${allBranches.find(branch => branch.id === emp.branchId)?.name || 'No branch'}` 
+              }))
+            ]}
+          />
+
+          <Input
+            ref={withdrawalAmountRef}
+            label={t('withdrawalAmount')}
+            type="number"
+            min="0"
+            value={newWithdrawal.amount}
+            onChange={(e) => setNewWithdrawal({...newWithdrawal, amount: e.target.value})}
+            onKeyDown={(e) => handleWithdrawalKeyDown(e, 'amount')}
+            placeholder="Enter withdrawal amount in IQD"
+            disabled={!employeeBalance}
+          />
+
+          <Input
+            ref={withdrawalDateRef}
+            label={t('withdrawalDate')}
+            type="date"
+            value={newWithdrawal.withdrawalDate}
+            onChange={(e) => setNewWithdrawal({...newWithdrawal, withdrawalDate: e.target.value})}
+            onKeyDown={(e) => handleWithdrawalKeyDown(e, 'date')}
+          />
+
+          <Input
+            ref={withdrawalNotesRef}
+            label={t('notes')}
+            value={newWithdrawal.notes}
+            onChange={(e) => setNewWithdrawal({...newWithdrawal, notes: e.target.value})}
+            onKeyDown={(e) => handleWithdrawalKeyDown(e, 'notes')}
+            placeholder="Optional notes about the withdrawal"
+          />
+
+          <div className="flex space-x-3 pt-4">
+            <Button 
+              onClick={handleAddWithdrawal} 
+              className="flex-1"
+              disabled={!employeeBalance || !newWithdrawal.amount}
+            >
+              {keepFormOpen ? 'Process & Add Another' : 'Process Withdrawal'}
+            </Button>
+            <Button 
+              variant="outline" 
+              onClick={() => {
+                setShowWithdrawalModal(false);
+                setWithdrawalEmployee(null);
+                setEmployeeBalance(null);
+                setKeepFormOpen(true); // Reset for next time
               }} 
               className="flex-1"
             >

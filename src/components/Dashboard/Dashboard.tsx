@@ -4,6 +4,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useNotifications } from '../../contexts/NotificationContext';
 import DashboardWidget from './DashboardWidget';
 import RecentNotifications from './RecentNotifications';
+import { formatPrimaryCurrency } from '../../utils/currency';
 import { 
   TrendingUp, 
   DollarSign, 
@@ -143,7 +144,7 @@ const Dashboard: React.FC = () => {
   };
 
   const formatCurrency = (amount: number) => {
-    return `$${amount.toLocaleString()}`;
+    return formatPrimaryCurrency(amount);
   };
 
   const formatPercentage = (value: number) => {

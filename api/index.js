@@ -1,6 +1,6 @@
 const express = require('express');
 const cors = require('cors');
-const dotenv = require('dotenv');
+const path = require('path');
 
 // Import database initialization
 const { initializeDatabase } = require('./database.js');
@@ -16,28 +16,56 @@ const hrRoutes = require('./routes/hr.js');
 const notificationRoutes = require('./routes/notifications.js');
 const dashboardRoutes = require('./routes/dashboard.js');
 
-// Load environment variables
-dotenv.config();
-
-// Create Express app
 const app = express();
 
-// Middleware
+// Configure CORS for production
 app.use(cors({
-  origin: true,
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    
+    // Allow Vercel domains
+    if (origin && (
+      origin.includes('.vercel.app') || 
+      origin.includes('localhost') ||
+      origin === process.env.FRONTEND_URL
+    )) {
+      return callback(null, true);
+    }
+    
+    callback(new Error('Not allowed by CORS'));
+  },
   credentials: true
 }));
+
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
-// Initialize database once
+// Logging middleware
+app.use((req, res, next) => {
+  console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
+  next();
+});
+
+// Initialize database on first request
 let dbInitialized = false;
-const initDB = async () => {
+app.use(async (req, res, next) => {
   if (!dbInitialized) {
-    await initializeDatabase();
-    dbInitialized = true;
+    try {
+      console.log('🔄 Initializing database...');
+      await initializeDatabase();
+      dbInitialized = true;
+      console.log('✅ Database initialized successfully');
+    } catch (error) {
+      console.error('❌ Failed to initialize database:', error);
+      return res.status(500).json({ 
+        error: 'Database initialization failed',
+        message: error.message 
+      });
+    }
   }
-};
+  next();
+});
 
 // API Routes
 app.use('/auth', authRoutes);
@@ -55,7 +83,8 @@ app.get('/health', (req, res) => {
   res.json({ 
     status: 'OK', 
     timestamp: new Date().toISOString(),
-    message: 'AccountingPro API is running on Vercel'
+    message: 'AccountingPro API is running on Vercel',
+    environment: process.env.NODE_ENV || 'production'
   });
 });
 
@@ -76,11 +105,4 @@ app.use('*', (req, res) => {
   });
 });
 
-// Vercel serverless function handler
-module.exports = async function handler(req, res) {
-  // Initialize database on first request
-  await initDB();
-  
-  // Handle the request using Express app
-  return app(req, res);
-}; 
+module.exports = app; 

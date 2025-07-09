@@ -13,6 +13,10 @@ const transformSalesToFrontend = (sales) => {
     branchId: sales.branch_id,
     name: sales.name,
     amount: sales.amount,
+    currency: sales.currency || 'IQD',
+    convertedAmount: sales.converted_amount || sales.amount,
+    exchangeRate: sales.exchange_rate,
+    rateDate: sales.rate_date,
     date: sales.date,
     notes: sales.notes,
     createdBy: sales.created_by,
@@ -112,7 +116,18 @@ router.get('/sales', async (req, res) => {
 // Create sales entry
 router.post('/sales', async (req, res) => {
   try {
-    const { branchId, name, amount, date, notes, createdBy } = req.body;
+    const { 
+      branchId, 
+      name, 
+      amount, 
+      currency = 'IQD',
+      convertedAmount,
+      exchangeRate,
+      rateDate,
+      date, 
+      notes, 
+      createdBy 
+    } = req.body;
 
     if (!branchId || !name || !amount || !date || !createdBy) {
       return res.status(400).json({ 
@@ -127,11 +142,12 @@ router.post('/sales', async (req, res) => {
     }
 
     const salesId = uuidv4();
+    const finalConvertedAmount = convertedAmount || amount; // Use converted amount or fallback to original
     
     await runQuery(`
-      INSERT INTO sales_entries (id, branch_id, name, amount, date, notes, created_by)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `, [salesId, branchId, name, amount, date, notes, createdBy]);
+      INSERT INTO sales_entries (id, branch_id, name, amount, currency, converted_amount, exchange_rate, rate_date, date, notes, created_by)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `, [salesId, branchId, name, amount, currency, finalConvertedAmount, exchangeRate, rateDate, date, notes, createdBy]);
 
     const newSales = await getQuery(`
       SELECT s.*, b.name as branch_name, b.location as branch_location,

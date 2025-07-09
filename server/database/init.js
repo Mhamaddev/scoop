@@ -166,6 +166,10 @@ const createTables = async () => {
       branch_id TEXT NOT NULL,
       name TEXT NOT NULL,
       amount DECIMAL(15,2) NOT NULL,
+      currency TEXT CHECK(currency IN ('USD', 'IQD')) DEFAULT 'IQD',
+      converted_amount DECIMAL(15,2) NOT NULL,
+      exchange_rate DECIMAL(10,4),
+      rate_date DATE,
       date DATE NOT NULL,
       notes TEXT,
       created_by TEXT NOT NULL,
@@ -180,6 +184,10 @@ const createTables = async () => {
       branch_id TEXT NOT NULL,
       name TEXT NOT NULL,
       amount DECIMAL(15,2) NOT NULL,
+      currency TEXT CHECK(currency IN ('USD', 'IQD')) DEFAULT 'IQD',
+      converted_amount DECIMAL(15,2) NOT NULL,
+      exchange_rate DECIMAL(10,4),
+      rate_date DATE,
       date DATE NOT NULL,
       notes TEXT,
       created_by TEXT NOT NULL,
@@ -194,6 +202,10 @@ const createTables = async () => {
       branch_id TEXT NOT NULL,
       name TEXT NOT NULL,
       amount DECIMAL(15,2) NOT NULL,
+      currency TEXT CHECK(currency IN ('USD', 'IQD')) DEFAULT 'IQD',
+      converted_amount DECIMAL(15,2) NOT NULL,
+      exchange_rate DECIMAL(10,4),
+      rate_date DATE,
       date DATE NOT NULL,
       notes TEXT,
       payment_status TEXT CHECK(payment_status IN ('paid', 'unpaid')) DEFAULT 'unpaid',
@@ -212,7 +224,16 @@ const createTables = async () => {
       phone TEXT,
       location TEXT,
       salary DECIMAL(10,2) NOT NULL,
+      salary_currency TEXT CHECK(salary_currency IN ('USD', 'IQD')) DEFAULT 'IQD',
+      converted_salary DECIMAL(10,2) NOT NULL,
+      salary_exchange_rate DECIMAL(10,4),
+      salary_rate_date DATE,
       salary_days INTEGER NOT NULL,
+      deposit DECIMAL(10,2) DEFAULT 0,
+      deposit_currency TEXT CHECK(deposit_currency IN ('USD', 'IQD')) DEFAULT 'IQD',
+      converted_deposit DECIMAL(10,2) DEFAULT 0,
+      deposit_exchange_rate DECIMAL(10,4),
+      deposit_rate_date DATE,
       start_date DATE NOT NULL,
       is_active BOOLEAN DEFAULT 1,
       last_paid_date DATE,
@@ -229,6 +250,10 @@ const createTables = async () => {
       employee_id TEXT NOT NULL,
       type TEXT CHECK(type IN ('penalty', 'bonus')) NOT NULL,
       amount DECIMAL(10,2) NOT NULL,
+      currency TEXT CHECK(currency IN ('USD', 'IQD')) DEFAULT 'IQD',
+      converted_amount DECIMAL(10,2) NOT NULL,
+      exchange_rate DECIMAL(10,4),
+      rate_date DATE,
       date DATE NOT NULL,
       description TEXT NOT NULL,
       created_by TEXT NOT NULL,
@@ -247,16 +272,33 @@ const createTables = async () => {
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )`,
 
-    // Salary payments table  
+    // Salary payments table
     `CREATE TABLE IF NOT EXISTS salary_payments (
       id TEXT PRIMARY KEY,
       employee_id TEXT NOT NULL,
       amount DECIMAL(10,2) NOT NULL,
       payment_date DATE NOT NULL,
       notes TEXT,
-      created_by TEXT NOT NULL,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE,
+      created_by TEXT NOT NULL,
+      FOREIGN KEY (employee_id) REFERENCES employees(id),
+      FOREIGN KEY (created_by) REFERENCES users(id)
+    )`,
+
+    // Salary withdrawals table
+    `CREATE TABLE IF NOT EXISTS salary_withdrawals (
+      id TEXT PRIMARY KEY,
+      employee_id TEXT NOT NULL,
+      amount DECIMAL(10,2) NOT NULL,
+      currency TEXT CHECK(currency IN ('USD', 'IQD')) DEFAULT 'IQD',
+      converted_amount DECIMAL(10,2) NOT NULL,
+      exchange_rate DECIMAL(10,4),
+      rate_date DATE,
+      withdrawal_date DATE NOT NULL,
+      notes TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      created_by TEXT NOT NULL,
+      FOREIGN KEY (employee_id) REFERENCES employees(id),
       FOREIGN KEY (created_by) REFERENCES users(id)
     )`,
 
@@ -418,16 +460,94 @@ const runMigrations = async () => {
     
     // Migration 3: Add branch_id column to employees table
     const employeesColumns = await allQuery("PRAGMA table_info(employees)");
-    const hasBranchId = employeesColumns.some(column => column.name === 'branch_id');
+    const employeesHasBranchId = employeesColumns.some(column => column.name === 'branch_id');
     
-    if (!hasBranchId) {
+    if (!employeesHasBranchId) {
       console.log('🔄 Adding branch_id column to employees table...');
-      await runQuery('ALTER TABLE employees ADD COLUMN branch_id TEXT');
+      await runQuery('ALTER TABLE employees ADD COLUMN branch_id TEXT REFERENCES branches(id)');
+    }
+
+    // Migration 4: Add dual currency support to invoices table
+    const invoicesColumns2 = await allQuery("PRAGMA table_info(invoices)");
+    const hasConvertedAmount = invoicesColumns2.some(column => column.name === 'converted_amount');
+    const hasExchangeRate = invoicesColumns2.some(column => column.name === 'exchange_rate');
+    const hasRateDate = invoicesColumns2.some(column => column.name === 'rate_date');
+    
+    if (!hasConvertedAmount) {
+      console.log('🔄 Adding converted_amount column to invoices table...');
+      await runQuery('ALTER TABLE invoices ADD COLUMN converted_amount DECIMAL(15,2)');
     }
     
-    console.log('✅ Migrations completed successfully');
+    if (!hasExchangeRate) {
+      console.log('🔄 Adding exchange_rate column to invoices table...');
+      await runQuery('ALTER TABLE invoices ADD COLUMN exchange_rate DECIMAL(10,4)');
+    }
+    
+    if (!hasRateDate) {
+      console.log('🔄 Adding rate_date column to invoices table...');
+      await runQuery('ALTER TABLE invoices ADD COLUMN rate_date DATE');
+    }
+
+    // Update existing invoices with converted amounts (assuming IQD if no converted_amount)
+    const invoicesNeedingUpdate = await allQuery(`
+      SELECT id, amount, currency FROM invoices 
+      WHERE converted_amount IS NULL
+    `);
+    
+    for (const invoice of invoicesNeedingUpdate) {
+      const convertedAmount = invoice.currency === 'IQD' ? invoice.amount : 0;
+      await runQuery(`
+        UPDATE invoices SET converted_amount = ? WHERE id = ?
+      `, [convertedAmount, invoice.id]);
+    }
+
+    // Migration 5: Fix existing market entries with NULL converted_amount
+    console.log('🔄 Fixing market entries with NULL converted_amount...');
+    
+    // Fix sales entries
+    const salesNeedingUpdate = await allQuery(`
+      SELECT id, amount, currency FROM sales_entries 
+      WHERE converted_amount IS NULL OR converted_amount = 0
+    `);
+    
+    for (const sale of salesNeedingUpdate) {
+      const convertedAmount = sale.currency === 'IQD' ? sale.amount : sale.amount;
+      await runQuery(`
+        UPDATE sales_entries SET converted_amount = ? WHERE id = ?
+      `, [convertedAmount, sale.id]);
+    }
+    
+    // Fix profit entries
+    const profitsNeedingUpdate = await allQuery(`
+      SELECT id, amount, currency FROM profit_entries 
+      WHERE converted_amount IS NULL OR converted_amount = 0
+    `);
+    
+    for (const profit of profitsNeedingUpdate) {
+      const convertedAmount = profit.currency === 'IQD' ? profit.amount : profit.amount;
+      await runQuery(`
+        UPDATE profit_entries SET converted_amount = ? WHERE id = ?
+      `, [convertedAmount, profit.id]);
+    }
+    
+    // Fix expense entries
+    const expensesNeedingUpdate = await allQuery(`
+      SELECT id, amount, currency FROM expense_entries 
+      WHERE converted_amount IS NULL OR converted_amount = 0
+    `);
+    
+    for (const expense of expensesNeedingUpdate) {
+      const convertedAmount = expense.currency === 'IQD' ? expense.amount : expense.amount;
+      await runQuery(`
+        UPDATE expense_entries SET converted_amount = ? WHERE id = ?
+      `, [convertedAmount, expense.id]);
+    }
+
+    console.log('✅ Database migrations completed successfully');
+    
   } catch (error) {
-    console.error('Error running migrations:', error);
+    console.error('❌ Migration error:', error);
+    throw error;
   }
 };
 

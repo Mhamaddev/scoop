@@ -356,6 +356,36 @@ class ApiService {
     return await this.request(`/hr/payroll-summary/by-branch${query}`);
   }
 
+  // Salary Withdrawals
+  async getSalaryWithdrawals(params?: any) {
+    const query = params ? `?${new URLSearchParams(params).toString()}` : '';
+    return await this.request(`/hr/salary-withdrawals${query}`);
+  }
+
+  async createSalaryWithdrawal(withdrawalData: any) {
+    return await this.request('/hr/salary-withdrawals', {
+      method: 'POST',
+      body: JSON.stringify(withdrawalData),
+    });
+  }
+
+  async updateSalaryWithdrawal(id: string, updates: any) {
+    return await this.request(`/hr/salary-withdrawals/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(updates),
+    });
+  }
+
+  async deleteSalaryWithdrawal(id: string) {
+    return await this.request(`/hr/salary-withdrawals/${id}`, {
+      method: 'DELETE',
+    });
+  }
+
+  async getEmployeeAvailableBalance(employeeId: string) {
+    return await this.request(`/hr/employees/${employeeId}/available-balance`);
+  }
+
   // Users
   async getUsers() {
     return await this.request('/users');
@@ -457,6 +487,24 @@ class ApiService {
       method: 'POST',
       body: JSON.stringify(params),
     });
+  }
+
+  async getTotals(params?: {
+    branchId?: string;
+    startDate?: string;
+    endDate?: string;
+  }) {
+    const queryParams = new URLSearchParams();
+    if (params?.branchId) queryParams.append('branchId', params.branchId);
+    if (params?.startDate) queryParams.append('startDate', params.startDate);
+    if (params?.endDate) queryParams.append('endDate', params.endDate);
+    
+    const url = `/dashboard/totals${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
+    return await this.request(url);
+  }
+
+  async getLatestExchangeRate() {
+    return await this.request('/dashboard/latest-rate');
   }
 
   // Health check

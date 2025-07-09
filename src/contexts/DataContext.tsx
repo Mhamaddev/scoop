@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
-import { Invoice, DollarRate, SalesEntry, ProfitEntry, ExpenseEntry, Employee, Adjustment } from '../types';
+import { Invoice, DollarRate, SalesEntry, ProfitEntry, ExpenseEntry, Employee, Adjustment, SalaryWithdrawal } from '../types';
 import { apiService } from '../services/api';
 import { useAuth } from './AuthContext';
 
@@ -47,6 +47,13 @@ interface DataContextType {
   updateAdjustment: (adjustmentId: string, updates: Partial<Adjustment>) => Promise<void>;
   deleteAdjustment: (adjustmentId: string) => Promise<void>;
   
+  // Salary Withdrawals
+  salaryWithdrawals: SalaryWithdrawal[];
+  addSalaryWithdrawal: (withdrawal: Omit<SalaryWithdrawal, 'id' | 'createdAt'>) => Promise<void>;
+  updateSalaryWithdrawal: (withdrawalId: string, updates: Partial<SalaryWithdrawal>) => Promise<void>;
+  deleteSalaryWithdrawal: (withdrawalId: string) => Promise<void>;
+  getEmployeeAvailableBalance: (employeeId: string) => Promise<any>;
+  
   // Data management
   loading: boolean;
   refreshData: () => Promise<void>;
@@ -77,6 +84,7 @@ export const DataProvider: React.FC<DataProviderProps> = ({ children }) => {
   const [expenseEntries, setExpenseEntries] = useState<ExpenseEntry[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [adjustments, setAdjustments] = useState<Adjustment[]>([]);
+  const [salaryWithdrawals, setSalaryWithdrawals] = useState<SalaryWithdrawal[]>([]);
   const [loading, setLoading] = useState(false);
 
   // Refresh all data from API
@@ -93,7 +101,8 @@ export const DataProvider: React.FC<DataProviderProps> = ({ children }) => {
         profitsRes,
         expensesRes,
         employeesRes,
-        adjustmentsRes
+        adjustmentsRes,
+        withdrawalsRes
       ] = await Promise.all([
         apiService.getInvoices(),
         apiService.getDollarRates(),
@@ -101,7 +110,8 @@ export const DataProvider: React.FC<DataProviderProps> = ({ children }) => {
         apiService.getProfits(),
         apiService.getExpenses(),
         apiService.getEmployees(),
-        apiService.getAdjustments()
+        apiService.getAdjustments(),
+        apiService.getSalaryWithdrawals()
       ]);
       
       setInvoices(invoicesRes.invoices || []);
@@ -109,8 +119,16 @@ export const DataProvider: React.FC<DataProviderProps> = ({ children }) => {
       setSalesEntries(salesRes.sales || []);
       setProfitEntries(profitsRes.profits || []);
       setExpenseEntries(expensesRes.expenses || []);
+      
+      // Debug logging for employee data
+      console.log('📊 Employee data received:', employeesRes.employees);
+      if (employeesRes.employees && employeesRes.employees.length > 0) {
+        console.log('📊 First employee sample:', employeesRes.employees[0]);
+      }
+      
       setEmployees(employeesRes.employees || []);
       setAdjustments(adjustmentsRes.adjustments || []);
+      setSalaryWithdrawals(withdrawalsRes || []);
       
       } catch (error) {
       console.error('Error refreshing data:', error);
@@ -132,6 +150,7 @@ export const DataProvider: React.FC<DataProviderProps> = ({ children }) => {
       setExpenseEntries([]);
       setEmployees([]);
       setAdjustments([]);
+      setSalaryWithdrawals([]);
     }
   }, [user]);
 
@@ -198,7 +217,7 @@ export const DataProvider: React.FC<DataProviderProps> = ({ children }) => {
     try {
       await apiService.createSales({
         ...salesData,
-        createdBy: user?.id
+        createdBy: user?.id || 'current-user'
       });
       await refreshData();
     } catch (error) {
@@ -232,7 +251,7 @@ export const DataProvider: React.FC<DataProviderProps> = ({ children }) => {
     try {
       await apiService.createProfit({
         ...profitData,
-        createdBy: user?.id
+        createdBy: user?.id || 'current-user'
       });
       await refreshData();
     } catch (error) {
@@ -266,7 +285,7 @@ export const DataProvider: React.FC<DataProviderProps> = ({ children }) => {
     try {
       await apiService.createExpense({
         ...expenseData,
-        createdBy: user?.id
+        createdBy: user?.id || 'current-user'
       });
       await refreshData();
     } catch (error) {
@@ -305,13 +324,18 @@ export const DataProvider: React.FC<DataProviderProps> = ({ children }) => {
     }
   };
 
-  // Employee methods
+    // Employee methods
   const addEmployee = async (employeeData: Omit<Employee, 'id'>) => {
     try {
-      await apiService.createEmployee({
-      ...employeeData,
-        createdBy: user?.id
+      console.log('📝 Adding employee with data:', employeeData);
+      
+      const result = await apiService.createEmployee({
+        ...employeeData,
+        createdBy: user?.id || 'current-user'
       });
+      
+      console.log('✅ Employee creation result:', result);
+      
       await refreshData();
     } catch (error) {
       console.error('Error adding employee:', error);
@@ -354,7 +378,7 @@ export const DataProvider: React.FC<DataProviderProps> = ({ children }) => {
     try {
       await apiService.createAdjustment({
         ...adjustmentData,
-        createdBy: user?.id
+        createdBy: user?.id || 'current-user'
       });
       await refreshData();
     } catch (error) {
@@ -383,6 +407,49 @@ export const DataProvider: React.FC<DataProviderProps> = ({ children }) => {
     }
   };
 
+  // Salary Withdrawal methods
+  const addSalaryWithdrawal = async (withdrawalData: Omit<SalaryWithdrawal, 'id' | 'createdAt'>) => {
+    try {
+      await apiService.createSalaryWithdrawal({
+        ...withdrawalData,
+        createdBy: user?.id || 'current-user'
+      });
+      await refreshData();
+    } catch (error) {
+      console.error('Error adding salary withdrawal:', error);
+      throw error;
+    }
+  };
+
+  const updateSalaryWithdrawal = async (withdrawalId: string, updates: Partial<SalaryWithdrawal>) => {
+    try {
+      await apiService.updateSalaryWithdrawal(withdrawalId, updates);
+      await refreshData();
+    } catch (error) {
+      console.error('Error updating salary withdrawal:', error);
+      throw error;
+    }
+  };
+
+  const deleteSalaryWithdrawal = async (withdrawalId: string) => {
+    try {
+      await apiService.deleteSalaryWithdrawal(withdrawalId);
+      await refreshData();
+    } catch (error) {
+      console.error('Error deleting salary withdrawal:', error);
+      throw error;
+    }
+  };
+
+  const getEmployeeAvailableBalance = async (employeeId: string) => {
+    try {
+      return await apiService.getEmployeeAvailableBalance(employeeId);
+    } catch (error) {
+      console.error('Error getting employee available balance:', error);
+      throw error;
+    }
+  };
+
   return (
     <DataContext.Provider
       value={{
@@ -394,6 +461,7 @@ export const DataProvider: React.FC<DataProviderProps> = ({ children }) => {
         expenseEntries,
         employees,
         adjustments,
+        salaryWithdrawals,
         
         // Invoice methods
         addInvoice,
@@ -430,6 +498,12 @@ export const DataProvider: React.FC<DataProviderProps> = ({ children }) => {
         addAdjustment,
         updateAdjustment,
         deleteAdjustment,
+        
+        // Salary Withdrawal methods
+        addSalaryWithdrawal,
+        updateSalaryWithdrawal,
+        deleteSalaryWithdrawal,
+        getEmployeeAvailableBalance,
         
         // Management
         loading,

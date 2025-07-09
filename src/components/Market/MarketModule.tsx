@@ -8,7 +8,9 @@ import Button from '../Common/Button';
 import Input from '../Common/Input';
 import Select from '../Common/Select';
 import Modal from '../Common/Modal';
+import CurrencyAmountInput from '../Common/CurrencyAmountInput';
 import { SalesEntry, ProfitEntry, ExpenseEntry } from '../../types';
+import { CurrencyConversion, formatCurrency } from '../../utils/currency';
 
 const MarketModule: React.FC = () => {
   const { t } = useLanguage();
@@ -80,46 +82,64 @@ const MarketModule: React.FC = () => {
     branchId: '',
     name: '',
     amount: '',
+    currency: 'IQD' as 'USD' | 'IQD',
     date: new Date().toISOString().split('T')[0],
     notes: ''
   });
 
+  const [salesConversion, setSalesConversion] = useState<CurrencyConversion | null>(null);
+
   const [editSales, setEditSales] = useState({
     name: '',
     amount: '',
+    currency: 'IQD' as 'USD' | 'IQD',
     date: '',
     notes: ''
   });
+
+  const [editSalesConversion, setEditSalesConversion] = useState<CurrencyConversion | null>(null);
 
   const [newProfit, setNewProfit] = useState({
     branchId: '',
     name: '',
     amount: '',
+    currency: 'IQD' as 'USD' | 'IQD',
     date: new Date().toISOString().split('T')[0],
     notes: ''
   });
 
+  const [profitConversion, setProfitConversion] = useState<CurrencyConversion | null>(null);
+
   const [editProfit, setEditProfit] = useState({
     name: '',
     amount: '',
+    currency: 'IQD' as 'USD' | 'IQD',
     date: '',
     notes: ''
   });
+
+  const [editProfitConversion, setEditProfitConversion] = useState<CurrencyConversion | null>(null);
 
   const [newExpense, setNewExpense] = useState({
     branchId: '',
     name: '',
     amount: '',
+    currency: 'IQD' as 'USD' | 'IQD',
     date: new Date().toISOString().split('T')[0],
     notes: ''
   });
 
+  const [expenseConversion, setExpenseConversion] = useState<CurrencyConversion | null>(null);
+
   const [editExpense, setEditExpense] = useState({
     name: '',
     amount: '',
+    currency: 'IQD' as 'USD' | 'IQD',
     date: '',
     notes: ''
   });
+
+  const [editExpenseConversion, setEditExpenseConversion] = useState<CurrencyConversion | null>(null);
 
   // Handle Enter key navigation for Add Sales
   const handleAddSalesKeyDown = (e: React.KeyboardEvent, currentField: string) => {
@@ -276,20 +296,34 @@ const MarketModule: React.FC = () => {
       return;
     }
 
+    if (!salesConversion) {
+      addNotification({
+        type: 'expense',
+        title: 'Conversion Error',
+        message: 'Currency conversion failed. Please check exchange rates.',
+        priority: 'medium'
+      });
+      return;
+    }
+
     try {
       await addSalesEntry({
-      branchId: newSales.branchId,
+        branchId: newSales.branchId,
         name: newSales.name,
         amount: parseFloat(newSales.amount),
+        currency: newSales.currency,
+        convertedAmount: salesConversion.convertedAmount,
+        exchangeRate: salesConversion.exchangeRate,
+        rateDate: salesConversion.rateDate,
         date: newSales.date,
         notes: newSales.notes,
-      createdBy: 'current-user'
+        createdBy: 'current-user'
       });
       
       addNotification({
         type: 'expense',
         title: 'Sales Entry Added',
-        message: `Sales entry "${newSales.name}" for ${newSales.amount} has been added.`,
+        message: `Sales entry "${newSales.name}" for ${newSales.amount} ${newSales.currency} has been added.`,
         priority: 'low'
       });
       
@@ -298,6 +332,7 @@ const MarketModule: React.FC = () => {
           branchId: newSales.branchId,
           name: '',
           amount: '',
+          currency: newSales.currency,
           date: new Date().toISOString().split('T')[0],
           notes: ''
         });
@@ -375,11 +410,25 @@ const MarketModule: React.FC = () => {
       return;
     }
 
+    if (!profitConversion) {
+      addNotification({
+        type: 'expense',
+        title: 'Conversion Error',
+        message: 'Currency conversion failed. Please check exchange rates.',
+        priority: 'medium'
+      });
+      return;
+    }
+
     try {
       await addProfitEntry({
         branchId: newProfit.branchId,
         name: newProfit.name,
         amount: parseFloat(newProfit.amount),
+        currency: newProfit.currency,
+        convertedAmount: profitConversion.convertedAmount,
+        exchangeRate: profitConversion.exchangeRate,
+        rateDate: profitConversion.rateDate,
         date: newProfit.date,
         notes: newProfit.notes,
         createdBy: 'current-user'
@@ -388,7 +437,7 @@ const MarketModule: React.FC = () => {
       addNotification({
         type: 'expense',
         title: 'Profit Entry Added',
-        message: `Profit entry "${newProfit.name}" for ${newProfit.amount} has been added.`,
+        message: `Profit entry "${newProfit.name}" for ${newProfit.amount} ${newProfit.currency} has been added.`,
         priority: 'low'
       });
       
@@ -396,8 +445,9 @@ const MarketModule: React.FC = () => {
         setNewProfit({
           branchId: newProfit.branchId,
           name: '',
-      amount: '',
-      date: new Date().toISOString().split('T')[0],
+          amount: '',
+          currency: newProfit.currency,
+          date: new Date().toISOString().split('T')[0],
           notes: ''
         });
         setTimeout(() => addProfitNameRef.current?.focus(), 100);
@@ -474,11 +524,25 @@ const MarketModule: React.FC = () => {
       return;
     }
 
+    if (!expenseConversion) {
+      addNotification({
+        type: 'expense',
+        title: 'Conversion Error',
+        message: 'Currency conversion failed. Please check exchange rates.',
+        priority: 'medium'
+      });
+      return;
+    }
+
     try {
       await addExpenseEntry({
         branchId: newExpense.branchId,
         name: newExpense.name,
         amount: parseFloat(newExpense.amount),
+        currency: newExpense.currency,
+        convertedAmount: expenseConversion.convertedAmount,
+        exchangeRate: expenseConversion.exchangeRate,
+        rateDate: expenseConversion.rateDate,
         date: newExpense.date,
         notes: newExpense.notes,
         paymentStatus: 'unpaid',
@@ -488,21 +552,22 @@ const MarketModule: React.FC = () => {
       addNotification({
         type: 'expense',
         title: 'Expense Entry Added',
-        message: `Expense entry "${newExpense.name}" for ${newExpense.amount} has been added.`,
+        message: `Expense entry "${newExpense.name}" for ${newExpense.amount} ${newExpense.currency} has been added.`,
         priority: 'low'
-    });
-    
-    if (keepFormOpen) {
+      });
+      
+      if (keepFormOpen) {
         setNewExpense({
           branchId: newExpense.branchId,
           name: '',
-        amount: '',
-        date: new Date().toISOString().split('T')[0],
+          amount: '',
+          currency: newExpense.currency,
+          date: new Date().toISOString().split('T')[0],
           notes: ''
-      });
+        });
         setTimeout(() => addExpenseNameRef.current?.focus(), 100);
-    } else {
-      setShowAddModal(false);
+      } else {
+        setShowAddModal(false);
       }
     } catch (error) {
       addNotification({
@@ -560,6 +625,7 @@ const MarketModule: React.FC = () => {
       setEditSales({
         name: entry.name,
         amount: entry.amount.toString(),
+        currency: entry.currency,
         date: entry.date,
         notes: entry.notes || ''
       });
@@ -568,6 +634,7 @@ const MarketModule: React.FC = () => {
       setEditProfit({
         name: entry.name,
         amount: entry.amount.toString(),
+        currency: entry.currency,
         date: entry.date,
         notes: entry.notes || ''
       });
@@ -576,6 +643,7 @@ const MarketModule: React.FC = () => {
       setEditExpense({
         name: entry.name,
         amount: entry.amount.toString(),
+        currency: entry.currency,
         date: entry.date,
         notes: entry.notes || ''
       });
@@ -623,10 +691,14 @@ const MarketModule: React.FC = () => {
     // Add notification for payment
     const expense = expenseEntries.find(e => e.id === expenseId);
     if (expense) {
+      const amountDisplay = expense.currency === 'USD' 
+        ? `${(expense.convertedAmount || 0).toLocaleString()} IQD ($${(expense.amount || 0).toLocaleString()})`
+        : `${(expense.convertedAmount || expense.amount || 0).toLocaleString()} IQD`;
+        
       addNotification({
         type: 'expense',
         title: 'Expense Payment Processed',
-        message: `Payment of $${expense.amount.toLocaleString()} has been processed and marked as paid.`,
+        message: `Payment of ${amountDisplay} has been processed and marked as paid.`,
         priority: 'low'
       });
     }
@@ -770,7 +842,10 @@ const MarketModule: React.FC = () => {
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
                     <span className={getTabColor(activeTab)}>
-                      {entry.amount.toLocaleString()} IQD
+                      {entry.currency === 'USD' 
+                        ? `${(entry.convertedAmount || 0).toLocaleString()} IQD ($${(entry.amount || 0).toLocaleString()})`
+                        : `${(entry.convertedAmount || entry.amount || 0).toLocaleString()} IQD`
+                      }
                     </span>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white hidden md:table-cell">
@@ -872,15 +947,19 @@ const MarketModule: React.FC = () => {
                 onKeyDown={(e) => handleAddSalesKeyDown(e, 'name')}
                 placeholder="Enter sales name"
               />
-          <Input
-                ref={addSalesAmountRef}
-                label="Amount (IQD)"
-            type="number"
-                value={newSales.amount}
-                onChange={(e) => setNewSales({...newSales, amount: e.target.value})}
-                onKeyDown={(e) => handleAddSalesKeyDown(e, 'amount')}
-            placeholder="Enter amount"
-          />
+                        <CurrencyAmountInput
+                label="Amount"
+                amount={newSales.amount}
+                currency={newSales.currency}
+                entryDate={newSales.date}
+                onAmountChange={(amount) => setNewSales({...newSales, amount})}
+                onCurrencyChange={(currency) => setNewSales({...newSales, currency})}
+                onConversionChange={setSalesConversion}
+                amountRef={addSalesAmountRef}
+                onAmountKeyDown={(e) => handleAddSalesKeyDown(e, 'amount')}
+                placeholder="Enter amount"
+                required
+              />
               <Input
                 ref={addSalesDateRef}
                 label="Date"
@@ -925,14 +1004,18 @@ const MarketModule: React.FC = () => {
                 onKeyDown={(e) => handleAddProfitKeyDown(e, 'name')}
                 placeholder="Enter profit name"
               />
-              <Input
-                ref={addProfitAmountRef}
-                label="Amount (IQD)"
-                type="number"
-                value={newProfit.amount}
-                onChange={(e) => setNewProfit({...newProfit, amount: e.target.value})}
-                onKeyDown={(e) => handleAddProfitKeyDown(e, 'amount')}
+              <CurrencyAmountInput
+                label="Amount"
+                amount={newProfit.amount}
+                currency={newProfit.currency}
+                entryDate={newProfit.date}
+                onAmountChange={(amount) => setNewProfit({...newProfit, amount})}
+                onCurrencyChange={(currency) => setNewProfit({...newProfit, currency})}
+                onConversionChange={setProfitConversion}
+                amountRef={addProfitAmountRef}
+                onAmountKeyDown={(e) => handleAddProfitKeyDown(e, 'amount')}
                 placeholder="Enter amount"
+                required
               />
           <Input
                 ref={addProfitDateRef}
@@ -978,14 +1061,18 @@ const MarketModule: React.FC = () => {
                 onKeyDown={(e) => handleAddExpenseKeyDown(e, 'name')}
                 placeholder="Enter expense name"
               />
-              <Input
-                ref={addExpenseAmountRef}
-                label="Amount (IQD)"
-                type="number"
-                value={newExpense.amount}
-                onChange={(e) => setNewExpense({...newExpense, amount: e.target.value})}
-                onKeyDown={(e) => handleAddExpenseKeyDown(e, 'amount')}
+              <CurrencyAmountInput
+                label="Amount"
+                amount={newExpense.amount}
+                currency={newExpense.currency}
+                entryDate={newExpense.date}
+                onAmountChange={(amount) => setNewExpense({...newExpense, amount})}
+                onCurrencyChange={(currency) => setNewExpense({...newExpense, currency})}
+                onConversionChange={setExpenseConversion}
+                amountRef={addExpenseAmountRef}
+                onAmountKeyDown={(e) => handleAddExpenseKeyDown(e, 'amount')}
                 placeholder="Enter amount"
+                required
               />
               <Input
                 ref={addExpenseDateRef}
@@ -1049,14 +1136,18 @@ const MarketModule: React.FC = () => {
                 onKeyDown={(e) => handleEditSalesKeyDown(e, 'name')}
                 placeholder="Enter sales name"
               />
-              <Input
-                ref={editSalesAmountRef}
-                label="Amount (IQD)"
-                type="number"
-                value={editSales.amount}
-                onChange={(e) => setEditSales({...editSales, amount: e.target.value})}
-                onKeyDown={(e) => handleEditSalesKeyDown(e, 'amount')}
+              <CurrencyAmountInput
+                label="Amount"
+                amount={editSales.amount}
+                currency={editSales.currency}
+                entryDate={editSales.date}
+                onAmountChange={(amount) => setEditSales({...editSales, amount})}
+                onCurrencyChange={(currency) => setEditSales({...editSales, currency})}
+                onConversionChange={setEditSalesConversion}
+                amountRef={editSalesAmountRef}
+                onAmountKeyDown={(e) => handleEditSalesKeyDown(e, 'amount')}
                 placeholder="Enter amount"
+                required
               />
               <Input
                 ref={editSalesDateRef}
@@ -1088,14 +1179,18 @@ const MarketModule: React.FC = () => {
                 onKeyDown={(e) => handleEditProfitKeyDown(e, 'name')}
                 placeholder="Enter profit name"
               />
-              <Input
-                ref={editProfitAmountRef}
-                label="Amount (IQD)"
-                type="number"
-                value={editProfit.amount}
-                onChange={(e) => setEditProfit({...editProfit, amount: e.target.value})}
-                onKeyDown={(e) => handleEditProfitKeyDown(e, 'amount')}
+              <CurrencyAmountInput
+                label="Amount"
+                amount={editProfit.amount}
+                currency={editProfit.currency}
+                entryDate={editProfit.date}
+                onAmountChange={(amount) => setEditProfit({...editProfit, amount})}
+                onCurrencyChange={(currency) => setEditProfit({...editProfit, currency})}
+                onConversionChange={setEditProfitConversion}
+                amountRef={editProfitAmountRef}
+                onAmountKeyDown={(e) => handleEditProfitKeyDown(e, 'amount')}
                 placeholder="Enter amount"
+                required
               />
               <Input
                 ref={editProfitDateRef}
@@ -1127,14 +1222,18 @@ const MarketModule: React.FC = () => {
                 onKeyDown={(e) => handleEditExpenseKeyDown(e, 'name')}
                 placeholder="Enter expense name"
               />
-              <Input
-                ref={editExpenseAmountRef}
-                label="Amount (IQD)"
-                type="number"
-                value={editExpense.amount}
-                onChange={(e) => setEditExpense({...editExpense, amount: e.target.value})}
-                onKeyDown={(e) => handleEditExpenseKeyDown(e, 'amount')}
+              <CurrencyAmountInput
+                label="Amount"
+                amount={editExpense.amount}
+                currency={editExpense.currency}
+                entryDate={editExpense.date}
+                onAmountChange={(amount) => setEditExpense({...editExpense, amount})}
+                onCurrencyChange={(currency) => setEditExpense({...editExpense, currency})}
+                onConversionChange={setEditExpenseConversion}
+                amountRef={editExpenseAmountRef}
+                onAmountKeyDown={(e) => handleEditExpenseKeyDown(e, 'amount')}
                 placeholder="Enter amount"
+                required
               />
               <Input
                 ref={editExpenseDateRef}

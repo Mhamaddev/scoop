@@ -67,6 +67,180 @@ router.get('/stats', async (req, res) => {
   }
 });
 
+router.get('/totals', async (req, res) => {
+  try {
+    const { branchId, startDate, endDate } = req.query;
+    
+    // Build WHERE clause for filtering
+    let whereClause = 'WHERE 1=1';
+    const params = [];
+
+    if (branchId && branchId !== 'all') {
+      whereClause += ' AND branch_id = ?';
+      params.push(branchId);
+    }
+
+    if (startDate) {
+      whereClause += ' AND created_at >= ?';
+      params.push(startDate);
+    }
+
+    if (endDate) {
+      whereClause += ' AND created_at <= ?';
+      params.push(endDate);
+    }
+
+    // Get accounting total (from invoices) - use converted_amount for IQD totals
+    const accountingTotal = await getQuery(`
+      SELECT 
+        COALESCE(SUM(converted_amount), 0) as total_iqd,
+        COALESCE(SUM(CASE WHEN currency = 'USD' THEN amount ELSE 0 END), 0) as total_usd,
+        COALESCE(SUM(converted_amount), 0) as total
+      FROM invoices ${whereClause}
+    `, params);
+
+    // Get sales total - use converted_amount for IQD totals
+    const salesTotal = await getQuery(`
+      SELECT 
+        COALESCE(SUM(converted_amount), 0) as total_iqd,
+        COALESCE(SUM(CASE WHEN currency = 'USD' THEN amount ELSE 0 END), 0) as total_usd,
+        COALESCE(SUM(converted_amount), 0) as total
+      FROM sales_entries ${whereClause}
+    `, params);
+
+    // Get profit total - use converted_amount for IQD totals
+    const profitTotal = await getQuery(`
+      SELECT 
+        COALESCE(SUM(converted_amount), 0) as total_iqd,
+        COALESCE(SUM(CASE WHEN currency = 'USD' THEN amount ELSE 0 END), 0) as total_usd,
+        COALESCE(SUM(converted_amount), 0) as total
+      FROM profit_entries ${whereClause}
+    `, params);
+
+    // Get expenses total - use converted_amount for IQD totals
+    const expensesTotal = await getQuery(`
+      SELECT 
+        COALESCE(SUM(converted_amount), 0) as total_iqd,
+        COALESCE(SUM(CASE WHEN currency = 'USD' THEN amount ELSE 0 END), 0) as total_usd,
+        COALESCE(SUM(converted_amount), 0) as total
+      FROM expense_entries ${whereClause}
+    `, params);
+
+    res.json({
+      accounting: {
+        total_iqd: accountingTotal?.total_iqd || 0,
+        total_usd: accountingTotal?.total_usd || 0,
+        total: accountingTotal?.total || 0
+      },
+      sales: {
+        total_iqd: salesTotal?.total_iqd || 0,
+        total_usd: salesTotal?.total_usd || 0,
+        total: salesTotal?.total || 0
+      },
+      profit: {
+        total_iqd: profitTotal?.total_iqd || 0,
+        total_usd: profitTotal?.total_usd || 0,
+        total: profitTotal?.total || 0
+      },
+      expenses: {
+        total_iqd: expensesTotal?.total_iqd || 0,
+        total_usd: expensesTotal?.total_usd || 0,
+        total: expensesTotal?.total || 0
+      }
+    });
+
+  } catch (error) {
+    console.error('Error fetching totals:', error);
+    res.status(500).json({ error: 'Failed to fetch totals' });
+  }
+});
+
+// Get latest exchange rate
+router.get('/latest-rate', async (req, res) => {
+  try {
+    const latestRate = await getQuery(`
+      SELECT rate, date 
+      FROM dollar_rates 
+      ORDER BY date DESC, created_at DESC 
+      LIMIT 1
+    `);
+
+    if (!latestRate) {
+      // Return default rate if no rates exist
+      return res.json({
+        rate: 1500, // Default USD to IQD rate
+        date: new Date().toISOString().split('T')[0],
+        isDefault: true
+      });
+    }
+
+    res.json({
+      rate: latestRate.rate,
+      date: latestRate.date,
+      isDefault: false
+    });
+
+  } catch (error) {
+    console.error('Error fetching latest exchange rate:', error);
+    res.status(500).json({ error: 'Failed to fetch exchange rate' });
+  }
+});
+
+// Debug endpoint to check profit and expense data
+router.get('/debug-data', async (req, res) => {
+  try {
+    // Get all profit entries
+    const profits = await allQuery(`
+      SELECT id, name, amount, currency, converted_amount, exchange_rate, date, created_at
+      FROM profit_entries 
+      ORDER BY created_at DESC 
+      LIMIT 10
+    `);
+
+    // Get all expense entries
+    const expenses = await allQuery(`
+      SELECT id, name, amount, currency, converted_amount, exchange_rate, date, created_at
+      FROM expense_entries 
+      ORDER BY created_at DESC 
+      LIMIT 10
+    `);
+
+    // Get totals for debugging
+    const profitTotal = await getQuery(`
+      SELECT 
+        COUNT(*) as count,
+        COALESCE(SUM(amount), 0) as total_amount,
+        COALESCE(SUM(converted_amount), 0) as total_converted,
+        COALESCE(SUM(CASE WHEN currency = 'USD' THEN amount ELSE 0 END), 0) as total_usd
+      FROM profit_entries
+    `);
+
+    const expenseTotal = await getQuery(`
+      SELECT 
+        COUNT(*) as count,
+        COALESCE(SUM(amount), 0) as total_amount,
+        COALESCE(SUM(converted_amount), 0) as total_converted,
+        COALESCE(SUM(CASE WHEN currency = 'USD' THEN amount ELSE 0 END), 0) as total_usd
+      FROM expense_entries
+    `);
+
+    res.json({
+      profits: {
+        entries: profits,
+        totals: profitTotal
+      },
+      expenses: {
+        entries: expenses,
+        totals: expenseTotal
+      }
+    });
+
+  } catch (error) {
+    console.error('Error fetching debug data:', error);
+    res.status(500).json({ error: 'Failed to fetch debug data' });
+  }
+});
+
 // Get summary by date range
 router.get('/summary', async (req, res) => {
   try {

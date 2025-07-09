@@ -106,12 +106,13 @@ export const RoleProvider: React.FC<RoleProviderProps> = ({ children }) => {
       id: 'accountant',
       name: 'accountant',
       displayName: 'Accountant',
-      description: 'Accounting and financial operations access',
+      description: 'Accounting and financial operations access with HR withdrawals',
       permissions: permissions.filter(p => 
         p.module === 'dashboard' || 
         p.module === 'accounting' || 
         p.module === 'reports' ||
-        (p.module === 'settings' && p.action === 'view')
+        (p.module === 'settings' && p.action === 'view') ||
+        (p.module === 'hr' && p.action === 'view')
       ),
       isSystemRole: true,
       isActive: true,

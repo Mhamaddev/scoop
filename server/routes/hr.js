@@ -12,7 +12,14 @@ router.get('/employees', async (req, res) => {
     const { isActive, location, branchId, search, limit = 50, offset = 0 } = req.query;
     
     let query = `
-      SELECT e.*, u.name as created_by_name, b.name as branch_name, b.location as branch_location
+      SELECT e.id, e.name, e.phone, e.location, e.salary, e.salary_days as salaryDays, 
+             e.start_date as startDate, e.branch_id as branchId, e.is_active as isActive,
+             e.created_at as createdAt, e.created_by as createdBy,
+             u.name as created_by_name, b.name as branch_name, b.location as branch_location,
+             e.salary_currency as salaryCurrency, e.converted_salary as convertedSalary,
+             e.salary_exchange_rate as salaryExchangeRate, e.salary_rate_date as salaryRateDate,
+             e.deposit, e.deposit_currency as depositCurrency, e.converted_deposit as convertedDeposit,
+             e.deposit_exchange_rate as depositExchangeRate, e.deposit_rate_date as depositRateDate
       FROM employees e
       JOIN users u ON e.created_by = u.id
       LEFT JOIN branches b ON e.branch_id = b.id
@@ -45,8 +52,23 @@ router.get('/employees', async (req, res) => {
 
     const employees = await allQuery(query, params);
     
+    // Add salary payment history for each employee
+    const employeesWithPayments = await Promise.all(employees.map(async (employee) => {
+      const salaryPayments = await allQuery(`
+        SELECT sp.id, sp.amount, sp.payment_date as paymentDate, sp.notes, sp.created_at as createdAt
+        FROM salary_payments sp
+        WHERE sp.employee_id = ?
+        ORDER BY sp.payment_date DESC, sp.created_at DESC
+      `, [employee.id]);
+      
+      return {
+        ...employee,
+        salaryPayments: salaryPayments
+      };
+    }));
+    
     res.json({
-      employees: employees,
+      employees: employeesWithPayments,
       limit: parseInt(limit),
       offset: parseInt(offset)
     });
@@ -62,9 +84,17 @@ router.get('/employees/:id', async (req, res) => {
     const { id } = req.params;
     
     const employee = await getQuery(`
-      SELECT e.*, u.name as created_by_name
+      SELECT e.id, e.name, e.phone, e.location, e.salary, e.salary_days as salaryDays, 
+             e.start_date as startDate, e.branch_id as branchId, e.is_active as isActive,
+             e.created_at as createdAt, e.created_by as createdBy,
+             u.name as created_by_name, b.name as branch_name, b.location as branch_location,
+             e.salary_currency as salaryCurrency, e.converted_salary as convertedSalary,
+             e.salary_exchange_rate as salaryExchangeRate, e.salary_rate_date as salaryRateDate,
+             e.deposit, e.deposit_currency as depositCurrency, e.converted_deposit as convertedDeposit,
+             e.deposit_exchange_rate as depositExchangeRate, e.deposit_rate_date as depositRateDate
       FROM employees e
       JOIN users u ON e.created_by = u.id
+      LEFT JOIN branches b ON e.branch_id = b.id
       WHERE e.id = ?
     `, [id]);
     
@@ -81,9 +111,18 @@ router.get('/employees/:id', async (req, res) => {
       ORDER BY a.date DESC
     `, [id]);
 
+    // Get salary payment history
+    const salaryPayments = await allQuery(`
+      SELECT sp.id, sp.amount, sp.payment_date as paymentDate, sp.notes, sp.created_at as createdAt
+      FROM salary_payments sp
+      WHERE sp.employee_id = ?
+      ORDER BY sp.payment_date DESC, sp.created_at DESC
+    `, [id]);
+
     res.json({
       ...employee,
-      adjustments: adjustments
+      adjustments: adjustments,
+      salaryPayments: salaryPayments
     });
   } catch (error) {
     console.error('Error fetching employee:', error);
@@ -99,7 +138,12 @@ router.post('/employees', async (req, res) => {
       phone,
       location,
       salary,
+      salaryCurrency = 'IQD',
+      convertedSalary,
       salaryDays,
+      deposit = 0,
+      depositCurrency = 'IQD', 
+      convertedDeposit = 0,
       startDate,
       branchId,
       createdBy
@@ -129,23 +173,38 @@ router.post('/employees', async (req, res) => {
     
     await runQuery(`
       INSERT INTO employees (
-        id, name, phone, location, salary, salary_days, 
+        id, name, phone, location, salary, salary_currency, converted_salary, salary_days, 
+        deposit, deposit_currency, converted_deposit,
         start_date, branch_id, is_active, created_by
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `, [
-      employeeId, name, phone, location, salary, salaryDays, 
+      employeeId, name, phone, location, salary, salaryCurrency, convertedSalary || salary, salaryDays, 
+      deposit, depositCurrency, convertedDeposit || deposit,
       startDate, branchId, 1, createdBy
     ]);
 
     const newEmployee = await getQuery(`
-      SELECT e.*, u.name as created_by_name, b.name as branch_name, b.location as branch_location
+      SELECT e.id, e.name, e.phone, e.location, e.salary, e.salary_days as salaryDays, 
+             e.start_date as startDate, e.branch_id as branchId, e.is_active as isActive,
+             e.created_at as createdAt, e.created_by as createdBy,
+             u.name as created_by_name, b.name as branch_name, b.location as branch_location,
+             e.salary_currency as salaryCurrency, e.converted_salary as convertedSalary,
+             e.salary_exchange_rate as salaryExchangeRate, e.salary_rate_date as salaryRateDate,
+             e.deposit, e.deposit_currency as depositCurrency, e.converted_deposit as convertedDeposit,
+             e.deposit_exchange_rate as depositExchangeRate, e.deposit_rate_date as depositRateDate
       FROM employees e
       JOIN users u ON e.created_by = u.id
       LEFT JOIN branches b ON e.branch_id = b.id
       WHERE e.id = ?
     `, [employeeId]);
     
-    res.status(201).json(newEmployee);
+    // Add empty salary payments array for new employee
+    const employeeWithPayments = {
+      ...newEmployee,
+      salaryPayments: []
+    };
+    
+    res.status(201).json(employeeWithPayments);
   } catch (error) {
     console.error('Error creating employee:', error);
     res.status(500).json({ error: 'Failed to create employee' });
@@ -161,7 +220,12 @@ router.put('/employees/:id', async (req, res) => {
       phone,
       location,
       salary,
+      salaryCurrency,
+      convertedSalary,
       salaryDays,
+      deposit,
+      depositCurrency,
+      convertedDeposit,
       startDate,
       branchId,
       isActive
@@ -186,15 +250,28 @@ router.put('/employees/:id', async (req, res) => {
         phone = COALESCE(?, phone),
         location = COALESCE(?, location),
         salary = COALESCE(?, salary),
+        salary_currency = COALESCE(?, salary_currency),
+        converted_salary = COALESCE(?, converted_salary),
         salary_days = COALESCE(?, salary_days),
+        deposit = COALESCE(?, deposit),
+        deposit_currency = COALESCE(?, deposit_currency),
+        converted_deposit = COALESCE(?, converted_deposit),
         start_date = COALESCE(?, start_date),
         branch_id = COALESCE(?, branch_id),
         is_active = COALESCE(?, is_active)
       WHERE id = ?
-    `, [name, phone, location, salary, salaryDays, startDate, branchId, isActive, id]);
+    `, [name, phone, location, salary, salaryCurrency, convertedSalary, salaryDays, 
+        deposit, depositCurrency, convertedDeposit, startDate, branchId, isActive, id]);
 
     const updatedEmployee = await getQuery(`
-      SELECT e.*, u.name as created_by_name, b.name as branch_name, b.location as branch_location
+      SELECT e.id, e.name, e.phone, e.location, e.salary, e.salary_days as salaryDays, 
+             e.start_date as startDate, e.branch_id as branchId, e.is_active as isActive,
+             e.created_at as createdAt, e.created_by as createdBy,
+             u.name as created_by_name, b.name as branch_name, b.location as branch_location,
+             e.salary_currency as salaryCurrency, e.converted_salary as convertedSalary,
+             e.salary_exchange_rate as salaryExchangeRate, e.salary_rate_date as salaryRateDate,
+             e.deposit, e.deposit_currency as depositCurrency, e.converted_deposit as convertedDeposit,
+             e.deposit_exchange_rate as depositExchangeRate, e.deposit_rate_date as depositRateDate
       FROM employees e
       JOIN users u ON e.created_by = u.id
       LEFT JOIN branches b ON e.branch_id = b.id
@@ -263,9 +340,18 @@ router.post('/employees/:id/pay-salary', async (req, res) => {
     `, [date, amount, id]);
 
     const updatedEmployee = await getQuery(`
-      SELECT e.*, u.name as created_by_name
+      SELECT e.id, e.name, e.phone, e.location, e.salary, e.salary_days as salaryDays, 
+             e.start_date as startDate, e.branch_id as branchId, e.is_active as isActive,
+             e.created_at as createdAt, e.created_by as createdBy,
+             u.name as created_by_name, b.name as branch_name, b.location as branch_location,
+             e.salary_currency as salaryCurrency, e.converted_salary as convertedSalary,
+             e.salary_exchange_rate as salaryExchangeRate, e.salary_rate_date as salaryRateDate,
+             e.deposit, e.deposit_currency as depositCurrency, e.converted_deposit as convertedDeposit,
+             e.deposit_exchange_rate as depositExchangeRate, e.deposit_rate_date as depositRateDate,
+             e.last_paid_date as lastPaidDate, e.is_paid as isPaid, e.paid_amount as paidAmount
       FROM employees e
       JOIN users u ON e.created_by = u.id
+      LEFT JOIN branches b ON e.branch_id = b.id
       WHERE e.id = ?
     `, [id]);
     
@@ -653,6 +739,318 @@ router.get('/payroll-summary/by-branch', async (req, res) => {
   } catch (error) {
     console.error('Error fetching payroll summary by branch:', error);
     res.status(500).json({ error: 'Failed to fetch payroll summary by branch' });
+  }
+});
+
+// ===== SALARY WITHDRAWALS ROUTES =====
+
+// Get all salary withdrawals
+router.get('/salary-withdrawals', async (req, res) => {
+  try {
+    const { employeeId, startDate, endDate } = req.query;
+    
+    let query = `
+      SELECT sw.id, sw.employee_id as employeeId, sw.amount, sw.currency, sw.converted_amount as convertedAmount,
+             sw.exchange_rate as exchangeRate, sw.rate_date as rateDate, sw.withdrawal_date as withdrawalDate,
+             sw.notes, sw.created_at as createdAt, sw.created_by as createdBy,
+             e.name as employee_name, u.name as created_by_name
+      FROM salary_withdrawals sw
+      JOIN employees e ON sw.employee_id = e.id
+      JOIN users u ON sw.created_by = u.id
+      WHERE 1=1
+    `;
+    const params = [];
+
+    if (employeeId) {
+      query += ' AND sw.employee_id = ?';
+      params.push(employeeId);
+    }
+
+    if (startDate) {
+      query += ' AND sw.withdrawal_date >= ?';
+      params.push(startDate);
+    }
+
+    if (endDate) {
+      query += ' AND sw.withdrawal_date <= ?';
+      params.push(endDate);
+    }
+
+    query += ' ORDER BY sw.withdrawal_date DESC';
+
+    const withdrawals = await allQuery(query, params);
+    res.json(withdrawals);
+  } catch (error) {
+    console.error('Error fetching salary withdrawals:', error);
+    res.status(500).json({ error: 'Failed to fetch salary withdrawals' });
+  }
+});
+
+// Get specific salary withdrawal
+router.get('/salary-withdrawals/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    const withdrawal = await getQuery(`
+      SELECT sw.id, sw.employee_id as employeeId, sw.amount, sw.currency, sw.converted_amount as convertedAmount,
+             sw.exchange_rate as exchangeRate, sw.rate_date as rateDate, sw.withdrawal_date as withdrawalDate,
+             sw.notes, sw.created_at as createdAt, sw.created_by as createdBy,
+             e.name as employee_name, u.name as created_by_name
+      FROM salary_withdrawals sw
+      JOIN employees e ON sw.employee_id = e.id
+      JOIN users u ON sw.created_by = u.id
+      WHERE sw.id = ?
+    `, [id]);
+    
+    if (!withdrawal) {
+      return res.status(404).json({ error: 'Salary withdrawal not found' });
+    }
+    
+    res.json(withdrawal);
+  } catch (error) {
+    console.error('Error fetching salary withdrawal:', error);
+    res.status(500).json({ error: 'Failed to fetch salary withdrawal' });
+  }
+});
+
+// Create new salary withdrawal
+router.post('/salary-withdrawals', async (req, res) => {
+  try {
+    const {
+      employeeId,
+      amount,
+      currency = 'IQD',
+      convertedAmount,
+      exchangeRate,
+      rateDate,
+      withdrawalDate,
+      notes = '',
+      createdBy
+    } = req.body;
+
+    if (!employeeId || !amount || !withdrawalDate || !createdBy) {
+      return res.status(400).json({ 
+        error: 'Employee ID, amount, withdrawal date, and created by are required' 
+      });
+    }
+
+    // Check if employee exists
+    const employee = await getQuery('SELECT * FROM employees WHERE id = ?', [employeeId]);
+    if (!employee) {
+      return res.status(400).json({ error: 'Invalid employee ID' });
+    }
+
+    // Check if user exists
+    const user = await getQuery('SELECT * FROM users WHERE id = ?', [createdBy]);
+    if (!user) {
+      return res.status(400).json({ error: 'Invalid user ID' });
+    }
+
+    const withdrawalId = uuidv4();
+    
+    await runQuery(`
+      INSERT INTO salary_withdrawals (
+        id, employee_id, amount, currency, converted_amount, exchange_rate, rate_date,
+        withdrawal_date, notes, created_by
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `, [
+      withdrawalId, employeeId, amount, currency, convertedAmount || amount, exchangeRate, rateDate,
+      withdrawalDate, notes, createdBy
+    ]);
+
+    const newWithdrawal = await getQuery(`
+      SELECT sw.id, sw.employee_id as employeeId, sw.amount, sw.currency, sw.converted_amount as convertedAmount,
+             sw.exchange_rate as exchangeRate, sw.rate_date as rateDate, sw.withdrawal_date as withdrawalDate,
+             sw.notes, sw.created_at as createdAt, sw.created_by as createdBy,
+             e.name as employee_name, u.name as created_by_name
+      FROM salary_withdrawals sw
+      JOIN employees e ON sw.employee_id = e.id
+      JOIN users u ON sw.created_by = u.id
+      WHERE sw.id = ?
+    `, [withdrawalId]);
+    
+    res.status(201).json(newWithdrawal);
+  } catch (error) {
+    console.error('Error creating salary withdrawal:', error);
+    res.status(500).json({ error: 'Failed to create salary withdrawal' });
+  }
+});
+
+// Update salary withdrawal
+router.put('/salary-withdrawals/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const {
+      amount,
+      currency,
+      convertedAmount,
+      exchangeRate,
+      rateDate,
+      withdrawalDate,
+      notes
+    } = req.body;
+
+    const existingWithdrawal = await getQuery('SELECT * FROM salary_withdrawals WHERE id = ?', [id]);
+    if (!existingWithdrawal) {
+      return res.status(404).json({ error: 'Salary withdrawal not found' });
+    }
+
+    await runQuery(`
+      UPDATE salary_withdrawals SET 
+        amount = COALESCE(?, amount),
+        currency = COALESCE(?, currency),
+        converted_amount = COALESCE(?, converted_amount),
+        exchange_rate = COALESCE(?, exchange_rate),
+        rate_date = COALESCE(?, rate_date),
+        withdrawal_date = COALESCE(?, withdrawal_date),
+        notes = COALESCE(?, notes)
+      WHERE id = ?
+    `, [amount, currency, convertedAmount, exchangeRate, rateDate, withdrawalDate, notes, id]);
+
+    const updatedWithdrawal = await getQuery(`
+      SELECT sw.id, sw.employee_id as employeeId, sw.amount, sw.currency, sw.converted_amount as convertedAmount,
+             sw.exchange_rate as exchangeRate, sw.rate_date as rateDate, sw.withdrawal_date as withdrawalDate,
+             sw.notes, sw.created_at as createdAt, sw.created_by as createdBy,
+             e.name as employee_name, u.name as created_by_name
+      FROM salary_withdrawals sw
+      JOIN employees e ON sw.employee_id = e.id
+      JOIN users u ON sw.created_by = u.id
+      WHERE sw.id = ?
+    `, [id]);
+    
+    res.json(updatedWithdrawal);
+  } catch (error) {
+    console.error('Error updating salary withdrawal:', error);
+    res.status(500).json({ error: 'Failed to update salary withdrawal' });
+  }
+});
+
+// Delete salary withdrawal
+router.delete('/salary-withdrawals/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const existingWithdrawal = await getQuery('SELECT * FROM salary_withdrawals WHERE id = ?', [id]);
+    if (!existingWithdrawal) {
+      return res.status(404).json({ error: 'Salary withdrawal not found' });
+    }
+
+    await runQuery('DELETE FROM salary_withdrawals WHERE id = ?', [id]);
+    
+    res.json({ message: 'Salary withdrawal deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting salary withdrawal:', error);
+    res.status(500).json({ error: 'Failed to delete salary withdrawal' });
+  }
+});
+
+// Get employee's available salary balance for withdrawal
+router.get('/employees/:id/available-balance', async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    const employee = await getQuery('SELECT * FROM employees WHERE id = ?', [id]);
+    if (!employee) {
+      return res.status(404).json({ error: 'Employee not found' });
+    }
+
+    const startDate = new Date(employee.start_date);
+    const today = new Date();
+    const dailyRate = employee.salary / employee.salary_days;
+    
+    // Get salary payments ordered by date
+    const payments = await allQuery(
+      'SELECT * FROM salary_payments WHERE employee_id = ? ORDER BY payment_date DESC',
+      [id]
+    );
+    
+    let availableBalance = 0;
+    let balanceSource = '';
+    let currentPeriodStart = startDate;
+    let currentPeriodEnd = new Date(startDate);
+    currentPeriodEnd.setDate(currentPeriodEnd.getDate() + employee.salary_days);
+    
+    // If no payments, check if first salary period has passed
+    if (payments.length === 0) {
+      const daysSinceStart = Math.floor((today - startDate) / (1000 * 60 * 60 * 24));
+      
+      if (daysSinceStart >= employee.salary_days) {
+        // First salary period has passed but not paid - can withdraw from unpaid salary
+        const withdrawalsForPeriod = await allQuery(`
+          SELECT SUM(converted_amount) as total FROM salary_withdrawals 
+          WHERE employee_id = ? AND withdrawal_date >= ? AND withdrawal_date < ?
+        `, [id, startDate.toISOString().split('T')[0], currentPeriodEnd.toISOString().split('T')[0]]);
+        
+        const withdrawnFromPeriod = withdrawalsForPeriod[0]?.total || 0;
+        availableBalance = Math.max(0, employee.salary - withdrawnFromPeriod);
+        balanceSource = 'unpaid_salary_period';
+           } else {
+       // Still within first salary period - can withdraw from earned amount
+       // Always ensure at least 1 day is counted if employee has started
+       const daysToCount = Math.max(1, daysSinceStart);
+       const earnedAmount = daysToCount * dailyRate;
+       const withdrawalsForPeriod = await allQuery(`
+         SELECT SUM(converted_amount) as total FROM salary_withdrawals 
+         WHERE employee_id = ? AND withdrawal_date >= ?
+       `, [id, startDate.toISOString().split('T')[0]]);
+       
+       const withdrawnFromPeriod = withdrawalsForPeriod[0]?.total || 0;
+       availableBalance = Math.max(0, earnedAmount - withdrawnFromPeriod);
+       balanceSource = 'current_earning_period';
+     }
+    } else {
+      // Has payment history - determine current period based on last payment
+      const lastPayment = payments[0];
+      const lastPaymentDate = new Date(lastPayment.payment_date);
+      const daysSinceLastPayment = Math.floor((today - lastPaymentDate) / (1000 * 60 * 60 * 24));
+      
+      if (daysSinceLastPayment >= employee.salary_days) {
+        // New salary period has passed since last payment - can withdraw from unpaid salary
+        const nextPeriodStart = new Date(lastPaymentDate);
+        nextPeriodStart.setDate(nextPeriodStart.getDate() + 1);
+        const nextPeriodEnd = new Date(nextPeriodStart);
+        nextPeriodEnd.setDate(nextPeriodEnd.getDate() + employee.salary_days);
+        
+        const withdrawalsForPeriod = await allQuery(`
+          SELECT SUM(converted_amount) as total FROM salary_withdrawals 
+          WHERE employee_id = ? AND withdrawal_date >= ? AND withdrawal_date < ?
+        `, [id, nextPeriodStart.toISOString().split('T')[0], nextPeriodEnd.toISOString().split('T')[0]]);
+        
+        const withdrawnFromPeriod = withdrawalsForPeriod[0]?.total || 0;
+        availableBalance = Math.max(0, employee.salary - withdrawnFromPeriod);
+        balanceSource = 'unpaid_salary_period';
+             } else {
+         // Still within current earning period after last payment - can withdraw from earned amount
+         // Always ensure at least 1 day is counted if any time has passed since payment
+         const daysToCount = Math.max(1, daysSinceLastPayment);
+         const earnedAmount = daysToCount * dailyRate;
+         const currentPeriodStart = new Date(lastPaymentDate);
+         currentPeriodStart.setDate(currentPeriodStart.getDate() + 1);
+         
+         const withdrawalsForPeriod = await allQuery(`
+           SELECT SUM(converted_amount) as total FROM salary_withdrawals 
+           WHERE employee_id = ? AND withdrawal_date >= ?
+         `, [id, currentPeriodStart.toISOString().split('T')[0]]);
+         
+         const withdrawnFromPeriod = withdrawalsForPeriod[0]?.total || 0;
+         availableBalance = Math.max(0, earnedAmount - withdrawnFromPeriod);
+         balanceSource = 'current_earning_period';
+       }
+    }
+    
+    res.json({
+      employeeId: id,
+      employeeName: employee.name,
+      baseSalary: employee.salary,
+      salaryDays: employee.salary_days,
+      dailyRate: dailyRate,
+      availableBalance: availableBalance,
+      balanceSource: balanceSource,
+      canWithdraw: availableBalance > 0
+    });
+  } catch (error) {
+    console.error('Error calculating available balance:', error);
+    res.status(500).json({ error: 'Failed to calculate available balance' });
   }
 });
 

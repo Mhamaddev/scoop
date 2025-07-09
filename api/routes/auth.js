@@ -1,8 +1,8 @@
-const express = require('express');
-const bcrypt = require('bcryptjs');
-const jwt = require('jsonwebtoken');
-const { v4: uuidv4 } = require('uuid');
-const { runQuery, getQuery, allQuery } = require('../database.js');
+import express from 'express';
+import bcrypt from 'bcryptjs';
+import jwt from 'jsonwebtoken';
+import { v4 as uuidv4 } from 'uuid';
+import { runQuery, getQuery, allQuery } from '../database/init.js';
 
 const router = express.Router();
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
@@ -191,4 +191,4 @@ router.get('/verify', async (req, res) => {
   }
 });
 
-module.exports = router; 
+export default router; 

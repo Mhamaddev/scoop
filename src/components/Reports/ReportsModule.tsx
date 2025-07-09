@@ -187,22 +187,22 @@ const ReportsModule: React.FC = () => {
           >
             🔍 Debug
           </Button>
-          <Button
+              <Button
             onClick={fetchExchangeRate}
-            variant="outline"
+                variant="outline"
             className="flex items-center justify-center"
-          >
+              >
             <DollarSign className="w-4 h-4 mr-2" />
             Rate
-          </Button>
-          <Button
+              </Button>
+              <Button
             onClick={fetchTotals}
             disabled={isLoading}
             className="flex items-center justify-center"
-          >
+              >
             <RefreshCw className={`w-4 h-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
             Refresh
-          </Button>
+              </Button>
         </div>
       </div>
 
